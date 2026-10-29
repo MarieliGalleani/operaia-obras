@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+    <infNFe Id="NFe35261044556677000186550010000200021583958389" versao="4.00">
+      <ide>
+        <cUF>35</cUF><cNF>58395838</cNF><natOp>Venda de mercadoria</natOp>
+        <mod>55</mod><serie>1</serie><nNF>20002</nNF>
+        <dhEmi>2026-10-29T09:00:00-03:00</dhEmi><tpNF>1</tpNF><idDest>1</idDest>
+        <cMunFG>3548906</cMunFG><tpImp>1</tpImp><tpEmis>1</tpEmis><cDV>9</cDV>
+        <tpAmb>2</tpAmb><finNFe>1</finNFe><indFinal>0</indFinal><indPres>9</indPres><procEmi>0</procEmi><verProc>operaia-fixture</verProc>
+      </ide>
+      <emit>
+        <CNPJ>44556677000186</CNPJ><xNome>Construluz Materiais Elétricos Ltda</xNome>
+        <enderEmit><xLgr>Rua Exemplo</xLgr><nro>100</nro><xBairro>Centro</xBairro><cMun>3548906</cMun><xMun>São Carlos</xMun><UF>SP</UF><CEP>13560000</CEP></enderEmit>
+        <IE>123456789110</IE><CRT>1</CRT>
+      </emit>
+      <dest>
+        <CNPJ>45123098000102</CNPJ><xNome>Construtora Alpha Ltda</xNome><indIEDest>9</indIEDest>
+      </dest>
+      <det nItem="1">
+        <prod>
+          <cProd>1001</cProd>
+          <cEAN>SEM GTIN</cEAN>
+          <xProd>CABO FLEXIVEL 2,5MM 750V</xProd>
+          <NCM>85444900</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>M</uCom>
+          <qCom>1200.0000</qCom>
+          <vUnCom>3.2500</vUnCom>
+          <vProd>3900.00</vProd>
+          <cEANTrib>SEM GTIN</cEANTrib>
+          <uTrib>M</uTrib>
+          <qTrib>1200.0000</qTrib>
+          <vUnTrib>3.2500</vUnTrib>
+          <indTot>1</indTot>
+        </prod>
+        <imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS></imposto>
+      </det>
+      <det nItem="2">
+        <prod>
+          <cProd>1002</cProd>
+          <cEAN>SEM GTIN</cEAN>
+          <xProd>DISJUNTOR DIN 32A</xProd>
+          <NCM>85362000</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>UN</uCom>
+          <qCom>40.0000</qCom>
+          <vUnCom>28.5000</vUnCom>
+          <vProd>1140.00</vProd>
+          <cEANTrib>SEM GTIN</cEANTrib>
+          <uTrib>UN</uTrib>
+          <qTrib>40.0000</qTrib>
+          <vUnTrib>28.5000</vUnTrib>
+          <indTot>1</indTot>
+        </prod>
+        <imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS></imposto>
+      </det>
+      <total><ICMSTot><vBC>0.00</vBC><vICMS>0.00</vICMS><vProd>5040.00</vProd><vFrete>0.00</vFrete><vDesc>0.00</vDesc><vNF>5040.00</vNF></ICMSTot></total>
+      <transp><modFrete>0</modFrete></transp>
+      <cobr><fat><nFat>20002</nFat><vOrig>5040.00</vOrig><vDesc>0.00</vDesc><vLiq>5040.00</vLiq></fat><dup><nDup>001</nDup><dVenc>2026-11-19</dVenc><vDup>5040.00</vDup></dup></cobr>
+      <pag><detPag><tPag>15</tPag><vPag>5040.00</vPag></detPag></pag>
+      
+      
+    </infNFe>
+  </NFe>
+  <protNFe versao="4.00"><infProt><tpAmb>2</tpAmb><chNFe>35261044556677000186550010000200021583958389</chNFe><dhRecbto>2026-10-29T09:00:00-03:00</dhRecbto><nProt>135250000020002</nProt><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>
+</nfeProc>

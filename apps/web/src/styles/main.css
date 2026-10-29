@@ -1,0 +1,117 @@
+:root {
+  --oo-sidebar: #0b2e26;
+  --oo-sidebar-active: #134236;
+  --oo-primary: #0e6b53;
+  --oo-bright: #1fa77a;
+  --oo-accent: #f2a93b;
+  --oo-danger: #e5484d;
+  --oo-bg: #f4f6f5;
+  --oo-border: #e6eae8;
+  --oo-text: #16211d;
+  --oo-muted: #6b7a74;
+  --oo-track: #e9edeb;
+}
+
+html,
+body,
+.v-application {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+  color: var(--oo-text);
+}
+.v-application .text-h1,
+.v-application .text-h2,
+.v-application .text-h3,
+.v-application .text-h4,
+.v-application .text-h5,
+.v-application .text-h6,
+.v-application .text-subtitle-1,
+.v-application .text-subtitle-2,
+.v-application .text-body-1,
+.v-application .text-body-2,
+.v-application .text-caption,
+.v-application .text-overline,
+.v-application .text-button {
+  font-family: inherit !important;
+}
+
+.v-card {
+  border-color: var(--oo-border) !important;
+}
+
+.page-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.page-subtitle {
+  color: var(--oo-muted);
+  font-size: 0.9rem;
+}
+.card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.muted {
+  color: var(--oo-muted);
+}
+.money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.kpi-label {
+  font-size: 0.82rem;
+  color: var(--oo-muted);
+  font-weight: 500;
+}
+.kpi-value {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+.link {
+  color: var(--oo-primary);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+/* barra empilhada pago / a pagar / restante */
+.stack-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--oo-track);
+  overflow: hidden;
+}
+.stack-bar > span {
+  display: block;
+  height: 100%;
+}
+.legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.v-data-table th {
+  font-weight: 600 !important;
+  color: var(--oo-muted) !important;
+  font-size: 0.8rem !important;
+  white-space: nowrap;
+}
+.v-data-table td {
+  font-size: 0.86rem;
+}
+.clickable-rows tbody tr {
+  cursor: pointer;
+}

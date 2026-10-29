@@ -1,0 +1,17 @@
+{
+  "name": "operaia-obras",
+  "private": true,
+  "version": "0.1.0",
+  "description": "OperaIA Obras — inteligência operacional para construtoras: da nota fiscal à margem da obra.",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:api": "pnpm --filter @operaia-obras/api dev",
+    "dev:web": "pnpm --filter @operaia-obras/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @operaia-obras/api db:migrate",
+    "db:seed": "pnpm --filter @operaia-obras/api db:seed",
+    "db:reset": "pnpm --filter @operaia-obras/api db:reset"
+  }
+}
