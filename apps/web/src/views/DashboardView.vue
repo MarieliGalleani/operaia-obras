@@ -11,7 +11,7 @@ import StackBar from '@/components/StackBar.vue'
 import { api } from '@/lib/api'
 import { brl, date, pct } from '@/lib/format'
 import { currentMonth } from '@/lib/period'
-import { toastError } from '@/lib/toast'
+import { toast, toastError } from '@/lib/toast'
 
 interface Dashboard {
   period: { from: string; to: string }
@@ -57,6 +57,19 @@ const change = computed(() => {
   return { text: `${c >= 0 ? '↑' : '↓'} ${pct(Math.abs(c))} vs período anterior`, color: c > 0 ? 'error' : 'success' }
 })
 
+const exporting = ref(false)
+async function exportPeriod() {
+  exporting.value = true
+  try {
+    await api.download(`/api/exports/lancamentos.csv?from=${period.value.from}&to=${period.value.to}`, 'lancamentos.csv')
+    toast('Planilha de lançamentos gerada')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    exporting.value = false
+  }
+}
+
 function openAlert(a: Dashboard['alerts'][number]) {
   if (a.documentId) router.push({ name: 'documents', query: { doc: a.documentId } })
   else if (a.projectId) router.push({ name: 'project', params: { id: a.projectId } })
@@ -70,7 +83,10 @@ function openAlert(a: Dashboard['alerts'][number]) {
       <div class="page-title">Visão Geral</div>
       <div class="page-subtitle">Acompanhe custos, compromissos e alertas das suas obras.</div>
     </div>
-    <PeriodPicker v-model="period" />
+    <div class="d-flex ga-2 align-center flex-wrap">
+      <v-btn variant="outlined" prepend-icon="mdi-file-delimited-outline" :loading="exporting" @click="exportPeriod">Exportar lançamentos</v-btn>
+      <PeriodPicker v-model="period" />
+    </div>
   </div>
 
   <v-skeleton-loader v-if="loading && !data" type="card, card" />

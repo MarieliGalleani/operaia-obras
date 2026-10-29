@@ -1,0 +1,44 @@
+# Produção na VPS. O proxy que já existe na VPS encaminha o subdomínio para 127.0.0.1:${APP_PORT}.
+#   cp .env.production.example .env.production   (preencha)
+#   docker compose -f compose.prod.yml --env-file .env.production up -d --build
+
+name: operaia-obras
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-obras}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-operaia_obras}
+      TZ: America/Sao_Paulo
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-obras} -d ${POSTGRES_DB:-operaia_obras}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # sem porta publicada: o banco só é acessível pela rede interna do compose
+
+  app:
+    build: .
+    image: operaia-obras:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-obras}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-operaia_obras}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env.production}
+      CORS_ORIGIN: ${PUBLIC_URL:-}
+    volumes:
+      - storage:/app/storage
+    ports:
+      # só localhost: quem expõe para a internet (com HTTPS) é o proxy da VPS
+      - "127.0.0.1:${APP_PORT:-8090}:3333"
+
+volumes:
+  db_data:
+  storage:

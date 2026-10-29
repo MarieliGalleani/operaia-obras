@@ -5,7 +5,8 @@ import { useDisplay } from 'vuetify'
 import AppLogo from './components/AppLogo.vue'
 import { DEMO } from './lib/demo'
 import { cnpj } from './lib/format'
-import { toastState } from './lib/toast'
+import { api } from './lib/api'
+import { toast, toastError, toastState } from './lib/toast'
 import { useAuth } from './stores/auth'
 
 const route = useRoute()
@@ -22,7 +23,7 @@ const nav = [
   { title: 'Contas a Pagar', icon: 'mdi-calendar-check-outline', to: '/contas-a-pagar' },
   { title: 'Fornecedores', icon: 'mdi-truck-outline', to: '/fornecedores' },
   { title: 'Inteligência', icon: 'mdi-creation-outline', to: '/inteligencia' },
-  { title: 'Integrações', icon: 'mdi-puzzle-outline', to: '/integracoes', admin: true },
+  { title: 'Configurações', icon: 'mdi-cog-outline', to: '/configuracoes', admin: true },
 ]
 const visibleNav = computed(() => nav.filter((n) => !n.admin || auth.me?.user.role === 'ADMIN'))
 const isPublic = computed(() => !!route.meta.public)
@@ -30,6 +31,23 @@ const isPublic = computed(() => !!route.meta.public)
 function doSearch() {
   if (search.value.trim()) router.push({ name: 'documents', query: { q: search.value.trim(), tab: 'todas' } })
 }
+const pwDialog = ref(false)
+const pw = ref({ current: '', next: '', confirm: '' })
+const pwSaving = ref(false)
+async function changePassword() {
+  pwSaving.value = true
+  try {
+    await api.post('/api/auth/password', { current: pw.value.current, next: pw.value.next })
+    pwDialog.value = false
+    pw.value = { current: '', next: '', confirm: '' }
+    toast('Senha alterada')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    pwSaving.value = false
+  }
+}
+
 function logout() {
   auth.logout()
   router.push({ name: 'login' })
@@ -93,6 +111,7 @@ function logout() {
           <v-list density="compact" min-width="220">
             <v-list-item :title="auth.me?.user.name" :subtitle="auth.me?.user.email" />
             <v-divider />
+            <v-list-item v-if="!DEMO" prepend-icon="mdi-lock-reset" title="Trocar senha" @click="pwDialog = true" />
             <v-list-item v-if="!DEMO" prepend-icon="mdi-logout" title="Sair" @click="logout" />
           </v-list>
         </v-menu>
@@ -108,6 +127,28 @@ function logout() {
         </div>
       </v-main>
     </template>
+
+    <v-dialog v-model="pwDialog" max-width="420">
+      <v-card class="pa-5">
+        <div class="card-title mb-4">Trocar senha</div>
+        <v-form @submit.prevent="changePassword">
+          <v-text-field id="pw-current" v-model="pw.current" type="password" label="Senha atual" autocomplete="current-password" class="mb-3" />
+          <v-text-field id="pw-next" v-model="pw.next" type="password" label="Nova senha (mín. 10 caracteres)" autocomplete="new-password" class="mb-3" />
+          <v-text-field
+            id="pw-confirm"
+            v-model="pw.confirm"
+            type="password"
+            label="Repita a nova senha"
+            autocomplete="new-password"
+            :error-messages="pw.confirm && pw.confirm !== pw.next ? 'As senhas não conferem' : undefined"
+          />
+          <div class="d-flex justify-end ga-2 mt-5">
+            <v-btn variant="text" @click="pwDialog = false">Cancelar</v-btn>
+            <v-btn type="submit" color="primary" :loading="pwSaving" :disabled="!pw.current || pw.next.length < 10 || pw.next !== pw.confirm">Salvar</v-btn>
+          </div>
+        </v-form>
+      </v-card>
+    </v-dialog>
 
     <v-snackbar v-model="toastState.show" :color="toastState.color" timeout="4000" location="bottom right">
       {{ toastState.text }}

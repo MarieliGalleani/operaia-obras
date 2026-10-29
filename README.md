@@ -115,6 +115,17 @@ apps/web/src/
 
 Notas rateadas distribuem pago e a pagar proporcionalmente entre as obras. Valores monetários são guardados em centavos inteiros.
 
+## Colocar no ar e rodar um piloto
+
+| Documento | Para quê |
+| --- | --- |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Passo a passo na VPS: Docker, proxy com HTTPS, backup e atualização |
+| [`docs/PROMPT-CLAUDE-CODE-DEPLOY.md`](docs/PROMPT-CLAUDE-CODE-DEPLOY.md) | Prompt pronto para o Claude Code executar o deploy |
+| [`docs/PILOTO.md`](docs/PILOTO.md) | Checklist da construtora piloto: implantação, indicadores semanais e decisão final |
+| [`integrations/n8n/`](integrations/n8n/) | Fluxo do n8n que lê a caixa de notas e envia os XMLs |
+
+A CLI de operação (`node dist/cli/admin.js`) cria construtoras e usuários, reseta senhas e lista o uso.
+
 ## Próximos passos sugeridos
 
 Veja [`docs/ROADMAP.md`](docs/ROADMAP.md).

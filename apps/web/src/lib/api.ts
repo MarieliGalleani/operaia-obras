@@ -64,6 +64,18 @@ export const api = {
   get: <T>(url: string) => request<T>('GET', url),
   post: <T>(url: string, body?: unknown) => request<T>('POST', url, body),
   patch: <T>(url: string, body?: unknown) => request<T>('PATCH', url, body),
+  /** Baixa um arquivo autenticado (CSV etc.) */
+  async download(url: string, fallbackName: string) {
+    if (DEMO) throw new ApiError(403, 'DEMO', 'Exportações ficam desativadas na demonstração.')
+    const res = await fetch(url, { headers: { authorization: `Bearer ${getToken()}` } })
+    if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD', 'Não foi possível gerar o arquivo')
+    const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(await res.blob())
+    a.download = name
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+  },
   /** URL autenticada para abrir arquivo em nova aba */
   async openFile(url: string) {
     if (DEMO) throw new ApiError(403, 'DEMO', 'Os arquivos originais não acompanham a demonstração.')

@@ -7,3 +7,5 @@ apps/api/storage/*
 .DS_Store
 coverage
 dist-demo
+.env.production
+backups/

@@ -74,6 +74,16 @@ const summary = computed(() => {
   }
 })
 
+async function exportCsv() {
+  try {
+    const p = new URLSearchParams({ status: status.value })
+    if (projectId.value) p.set('projectId', projectId.value)
+    await api.download(`/api/exports/payables.csv?${p}`, 'contas-a-pagar.csv')
+  } catch (e) {
+    toastError(e)
+  }
+}
+
 function openPay(r: Row) {
   paying.value = r
   payForm.value = { amount: centsToInput(r.amount - r.paidAmount), paidAt: ymd(new Date()), method: 'PIX' }
@@ -118,6 +128,7 @@ async function pay() {
       </v-btn-toggle>
       <v-spacer />
       <v-select v-model="projectId" :items="projects.list" item-title="name" item-value="id" label="Obra" clearable style="max-width: 280px" />
+      <v-btn variant="outlined" prepend-icon="mdi-file-delimited-outline" @click="exportCsv">Exportar</v-btn>
     </div>
     <v-data-table :headers="headers" :items="rows" :loading="loading" items-per-page="50" no-data-text="Nenhum título.">
       <template #item.dueDate="{ item }">

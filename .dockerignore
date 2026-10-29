@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/dist-demo
+.git
+.env
+.env.*
+!.env.production.example
+apps/api/storage
+apps/api/fixtures
+backups
+docs/screenshots

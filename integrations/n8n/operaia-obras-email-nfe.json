@@ -1,0 +1,73 @@
+{
+  "name": "OperaIA Obras · E-mail → NF-e",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "downloadAttachments": true,
+        "options": {
+          "customEmailConfig": "[\"UNSEEN\"]"
+        }
+      },
+      "id": "b1f1c2a0-0001-4c1e-9a10-000000000001",
+      "name": "Caixa de notas (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "credentials": {
+        "imap": { "id": "", "name": "IMAP - notas da construtora" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Um item por anexo .xml (ignora PDF, imagens e assinaturas)\nconst out = [];\nfor (const item of $input.all()) {\n  for (const bin of Object.values(item.binary ?? {})) {\n    const name = (bin.fileName || '').toLowerCase();\n    const isXml = name.endsWith('.xml') || (bin.mimeType || '').includes('xml');\n    if (!isXml) continue;\n    out.push({\n      json: { fileName: bin.fileName, from: item.json.from, subject: item.json.subject },\n      binary: { data: bin },\n    });\n  }\n}\nreturn out;"
+      },
+      "id": "b1f1c2a0-0002-4c1e-9a10-000000000002",
+      "name": "Separar XMLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://obras.SEUDOMINIO.com.br/api/integrations/nfe",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-source", "value": "email" },
+            { "name": "x-filename", "value": "={{ $json.fileName }}" },
+            { "name": "Content-Type", "value": "application/xml" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "response": { "response": { "neverError": false } },
+          "batching": { "batch": { "batchSize": 1, "batchInterval": 500 } }
+        }
+      },
+      "id": "b1f1c2a0-0003-4c1e-9a10-000000000003",
+      "name": "Enviar ao OperaIA Obras",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "", "name": "OperaIA Obras - chave da construtora" }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Caixa de notas (IMAP)": { "main": [[{ "node": "Separar XMLs", "type": "main", "index": 0 }]] },
+    "Separar XMLs": { "main": [[{ "node": "Enviar ao OperaIA Obras", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "America/Sao_Paulo" },
+  "active": false
+}

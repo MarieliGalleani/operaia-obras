@@ -17,7 +17,9 @@ import {
   users,
 } from './db/schema.js'
 import { isValidCnpj, onlyDigits } from './domain/cnpj.js'
+import { changePassword, createUser } from './services/accounts.js'
 import { audit } from './services/audit.js'
+import { exportAllocations, exportPayables } from './services/exports.js'
 import { getDashboard } from './services/dashboard.js'
 import {
   approveDocument,
@@ -58,7 +60,7 @@ function looksLikeXml(name: string, content: Buffer) {
 
 export async function registerRoutes(app: FastifyInstance) {
   // ------------------------------------------------------------------ auth
-  app.post('/api/auth/login', async (req, reply) => {
+  app.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (req, reply) => {
     const body = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(req.body)
     const user = await db.query.users.findFirst({ where: eq(users.email, body.email.toLowerCase()) })
     if (!user || !(await bcrypt.compare(body.password, user.passwordHash))) {
@@ -74,7 +76,7 @@ export async function registerRoutes(app: FastifyInstance) {
    * Entrada para n8n / caixa de e-mail: POST com header x-api-key e o XML no corpo
    * (Content-Type: application/xml) ou em multipart.
    */
-  app.post('/api/integrations/nfe', async (req, reply) => {
+  app.post('/api/integrations/nfe', { config: { rateLimit: { max: 300, timeWindow: '1 minute' } } }, async (req, reply) => {
     const key = req.headers['x-api-key']
     if (typeof key !== 'string') return reply.code(401).send({ code: 'SEM_CHAVE', message: 'Informe o header x-api-key.' })
     const company = await db.query.companies.findFirst({ where: eq(companies.apiKey, key) })
@@ -416,6 +418,51 @@ export async function registerRoutes(app: FastifyInstance) {
         .leftJoin(users, sql`${users.id} = ${auditLogs.userId}`)
         .where(and(eq(auditLogs.companyId, me(req).companyId), eq(auditLogs.entity, q.entity), eq(auditLogs.entityId, q.entityId)))
         .orderBy(desc(auditLogs.createdAt))
+    })
+
+    // ------------------------------------------------------------- conta
+    r.post('/api/auth/password', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (req) => {
+      const body = z.object({ current: z.string().min(1), next: z.string().min(10) }).parse(req.body)
+      await changePassword(me(req).sub, body.current, body.next)
+      return { ok: true }
+    })
+
+    r.get('/api/users', async (req) => {
+      requireRole(req, 'ADMIN')
+      return db
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, createdAt: users.createdAt })
+        .from(users)
+        .where(eq(users.companyId, me(req).companyId))
+        .orderBy(users.name)
+    })
+
+    r.post('/api/users', async (req, reply) => {
+      requireRole(req, 'ADMIN')
+      const body = z
+        .object({ name: z.string().min(2), email: z.string().email(), role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA']) })
+        .parse(req.body)
+      const res = await createUser({ ...body, companyId: me(req).companyId, createdBy: me(req).sub })
+      // a senha provisória só é mostrada uma vez
+      return reply.code(201).send(res)
+    })
+
+    // ---------------------------------------------------------- exportações
+    r.get('/api/exports/payables.csv', async (req, reply) => {
+      const q = z.object({ status: z.string().optional(), from: ymd.optional(), to: ymd.optional(), projectId: z.string().uuid().optional() }).parse(req.query)
+      const csv = await exportPayables(me(req).companyId, q)
+      return reply
+        .header('Content-Type', 'text/csv; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="contas-a-pagar-${new Date().toISOString().slice(0, 10)}.csv"`)
+        .send(csv)
+    })
+
+    r.get('/api/exports/lancamentos.csv', async (req, reply) => {
+      const q = z.object({ from: ymd.optional(), to: ymd.optional(), projectId: z.string().uuid().optional() }).parse(req.query)
+      const csv = await exportAllocations(me(req).companyId, q)
+      return reply
+        .header('Content-Type', 'text/csv; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="lancamentos-por-obra-${q.from ?? 'inicio'}-a-${q.to ?? 'hoje'}.csv"`)
+        .send(csv)
     })
 
     r.get('/api/integrations', async (req) => {

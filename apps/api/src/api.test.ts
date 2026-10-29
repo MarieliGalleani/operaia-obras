@@ -208,6 +208,34 @@ describe('fluxo de documentos', () => {
     expect(proj.payables.length).toBe(3)
   })
 
+  it('admin cria acesso para a equipe e a pessoa troca a senha', async () => {
+    const email = `fin${rnd()}@teste.com`
+    const res = await api('POST', '/api/users', { name: 'Financeiro Teste', email, role: 'FINANCEIRO' })
+    expect(res.statusCode).toBe(201)
+    const temp = res.json().password as string
+    expect(temp.length).toBeGreaterThanOrEqual(10)
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: temp } })
+    const tk = login.json().token as string
+    // financeiro não gerencia equipe
+    expect((await api('GET', '/api/users', undefined, tk)).statusCode).toBe(403)
+    expect((await api('POST', '/api/auth/password', { current: 'errada', next: 'novasenha123' }, tk)).statusCode).toBe(400)
+    expect((await api('POST', '/api/auth/password', { current: temp, next: 'novasenha123' }, tk)).statusCode).toBe(200)
+    const relogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'novasenha123' } })
+    expect(relogin.statusCode).toBe(200)
+  })
+
+  it('exporta CSV no formato do Excel brasileiro', async () => {
+    const res = await api('GET', '/api/exports/lancamentos.csv')
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('text/csv')
+    const lines = res.body.replace('﻿', '').trim().split('\r\n')
+    expect(lines[0]).toContain('Emissão;NF;Fornecedor')
+    expect(lines).toHaveLength(4) // cabeçalho + 2 apropriações (rateio) + 1 nota
+    expect(res.body).toContain('6000,00')
+    const pay = await api('GET', '/api/exports/payables.csv?status=ABERTO,PARCIAL,PAGO')
+    expect(pay.body.trim().split('\r\n').length).toBe(4)
+  })
+
   it('dashboard consolida a construtora', async () => {
     const d = (await api('GET', '/api/dashboard')).json()
     expect(d.kpis.activeProjects).toBe(2)
