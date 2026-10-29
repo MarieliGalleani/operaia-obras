@@ -13,7 +13,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:reset": "tsx src/db/reset.ts && tsx src/db/migrate.ts && tsx src/db/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "fixtures": "tsx src/dev/generate-fixtures.ts"
+    "fixtures": "tsx src/dev/generate-fixtures.ts",
+    "demo:snapshot": "tsx src/dev/demo-snapshot.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

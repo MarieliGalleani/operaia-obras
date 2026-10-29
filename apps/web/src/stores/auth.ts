@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { api, getToken, setToken } from '@/lib/api'
+import { DEMO } from '@/lib/demo'
 
 interface Me {
   user: { id: string; name: string; email: string; role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' }
@@ -7,7 +8,7 @@ interface Me {
 }
 
 export const useAuth = defineStore('auth', {
-  state: () => ({ me: null as Me | null, token: getToken() }),
+  state: () => ({ me: null as Me | null, token: DEMO ? 'demo' : getToken() }),
   getters: {
     isLogged: (s) => !!s.token,
     initials: (s) =>

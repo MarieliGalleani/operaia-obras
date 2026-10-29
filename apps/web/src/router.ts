@@ -1,9 +1,11 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createMemoryHistory, createRouter, createWebHistory } from 'vue-router'
+import { DEMO } from './lib/demo'
 import { setUnauthorizedHandler } from './lib/api'
 import { useAuth } from './stores/auth'
 
 const router = createRouter({
-  history: createWebHistory(),
+  // a demonstração roda dentro de um frame: navegação em memória, sem mexer na URL
+  history: DEMO ? createMemoryHistory() : createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
     { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue'), meta: { title: 'Visão Geral' } },

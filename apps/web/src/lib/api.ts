@@ -1,3 +1,5 @@
+import { DEMO, DEMO_BLOCKED, demoGet } from './demo'
+
 const TOKEN_KEY = 'operaia-obras:token'
 
 export class ApiError extends Error {
@@ -31,6 +33,16 @@ let onUnauthorized: (() => void) | null = null
 export const setUnauthorizedHandler = (fn: () => void) => (onUnauthorized = fn)
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  if (DEMO) {
+    if (method === 'GET') {
+      try {
+        return (await demoGet(url)) as T
+      } catch (e) {
+        throw new ApiError(404, 'DEMO', (e as Error).message)
+      }
+    }
+    throw new ApiError(403, 'DEMO', DEMO_BLOCKED)
+  }
   const headers: Record<string, string> = {}
   const token = getToken()
   if (token) headers.authorization = `Bearer ${token}`
@@ -54,6 +66,7 @@ export const api = {
   patch: <T>(url: string, body?: unknown) => request<T>('PATCH', url, body),
   /** URL autenticada para abrir arquivo em nova aba */
   async openFile(url: string) {
+    if (DEMO) throw new ApiError(403, 'DEMO', 'Os arquivos originais não acompanham a demonstração.')
     const res = await fetch(url, { headers: { authorization: `Bearer ${getToken()}` } })
     if (!res.ok) throw new ApiError(res.status, 'ARQUIVO', 'Não foi possível abrir o arquivo')
     const blob = await res.blob()

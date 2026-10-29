@@ -6,3 +6,4 @@ apps/api/storage/*
 !apps/api/storage/.gitkeep
 .DS_Store
 coverage
+dist-demo

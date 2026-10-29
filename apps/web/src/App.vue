@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import AppLogo from './components/AppLogo.vue'
+import { DEMO } from './lib/demo'
 import { cnpj } from './lib/format'
 import { toastState } from './lib/toast'
 import { useAuth } from './stores/auth'
@@ -92,12 +93,16 @@ function logout() {
           <v-list density="compact" min-width="220">
             <v-list-item :title="auth.me?.user.name" :subtitle="auth.me?.user.email" />
             <v-divider />
-            <v-list-item prepend-icon="mdi-logout" title="Sair" @click="logout" />
+            <v-list-item v-if="!DEMO" prepend-icon="mdi-logout" title="Sair" @click="logout" />
           </v-list>
         </v-menu>
       </v-app-bar>
 
       <v-main>
+        <div v-if="DEMO" class="demo-bar">
+          <v-icon size="16" class="mr-1">mdi-eye-outline</v-icon>
+          Demonstração com dados fictícios da Construtora Alpha. Navegue à vontade; ações que gravam (aprovar, pagar, enviar) ficam desativadas.
+        </div>
         <div class="page-wrap">
           <router-view />
         </div>
@@ -119,6 +124,13 @@ function logout() {
   .page-wrap {
     padding: 16px;
   }
+}
+.demo-bar {
+  background: #fff4e0;
+  color: #7a4b00;
+  font-size: 0.82rem;
+  padding: 8px 28px;
+  border-bottom: 1px solid #f3dcb0;
 }
 .appbar {
   border-bottom: 1px solid var(--oo-border) !important;
