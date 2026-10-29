@@ -1,0 +1,21 @@
+# Liga o app à rede do proxy da VPS (Traefik do Easypanel), com um nome fixo.
+# Sem isso, cada rebuild recria o container fora da rede e o site dá "Bad Gateway".
+#
+# Use sempre junto com o compose.prod.yml (o scripts/deploy.sh já faz isso):
+#   docker compose -f compose.prod.yml -f compose.proxy.yml --env-file .env.production up -d --build
+#
+# O Traefik encontra o app em http://operaia-obras-app:3333
+# (/etc/easypanel/traefik/config/obras.yaml).
+
+services:
+  app:
+    networks:
+      default: {}
+      proxy:
+        aliases:
+          - operaia-obras-app
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-legacy-net}

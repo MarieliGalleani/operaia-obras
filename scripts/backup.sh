@@ -10,7 +10,9 @@ cd "$(dirname "$0")/.."
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
 STAMP="$(date +%Y-%m-%d_%H%M)"
 DEST="backups"
-COMPOSE="docker compose -f compose.prod.yml --env-file .env.production"
+FILES="-f compose.prod.yml"
+[ -f compose.proxy.yml ] && FILES="$FILES -f compose.proxy.yml"
+COMPOSE="docker compose $FILES --env-file .env.production"
 mkdir -p "$DEST"
 
 # shellcheck disable=SC1091

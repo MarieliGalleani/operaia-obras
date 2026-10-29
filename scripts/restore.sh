@@ -5,7 +5,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 DB_FILE="${1:?informe o arquivo db-*.dump}"
 STORAGE_FILE="${2:-}"
-COMPOSE="docker compose -f compose.prod.yml --env-file .env.production"
+FILES="-f compose.prod.yml"
+[ -f compose.proxy.yml ] && FILES="$FILES -f compose.proxy.yml"
+COMPOSE="docker compose $FILES --env-file .env.production"
 # shellcheck disable=SC1091
 set -a; source .env.production; set +a
 

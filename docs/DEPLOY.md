@@ -185,11 +185,18 @@ O fluxo do n8n em `integrations/n8n/` continua disponível como alternativa, par
 ## 10. Atualizar para uma nova versão
 
 ```bash
-cd ~/operaia-obras && git pull
-./scripts/backup.sh                                            # sempre antes de atualizar
-docker compose -f compose.prod.yml --env-file .env.production up -d --build
-docker compose -f compose.prod.yml --env-file .env.production logs -f --tail=50 app
+cd ~/operaia-obras && ./scripts/deploy.sh
 ```
+
+O script faz quatro coisas, nesta ordem:
+1. faz o backup;
+2. baixa a versão nova;
+3. reconstrói;
+4. confere se o app e o endereço público respondem.
+
+Se algo falhar, ele para e diz onde olhar.
+
+**Proxy em container (Traefik do Easypanel):** o `compose.proxy.yml` liga o app à rede do proxy com o nome fixo `operaia-obras-app`. Sem ele, cada rebuild recria o container fora da rede e o site dá **Bad Gateway**. A rede é definida em `PROXY_NETWORK` no `.env.production` (padrão `legacy-net`). Os scripts usam o arquivo sozinhos quando ele existe.
 
 ---
 
