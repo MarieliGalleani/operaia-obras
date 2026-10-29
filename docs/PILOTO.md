@@ -35,7 +35,8 @@
 2. **Cadastrar as obras** junto com eles (tela **Obras → Nova obra**). Use códigos curtos: `OBR-001`, `OBR-002`…
 3. **Caixa de notas:**
    - Criar `notas@construtora` (ou um Gmail dedicado).
-   - Configurar o fluxo do n8n (`integrations/n8n/README.md`).
+   - No Gmail, gerar uma *senha de app*.
+   - Conectar em **Configurações → E-mail de notas** (ou você, pela Plataforma). O sistema testa na hora.
    - Se preferirem, começam arrastando os XMLs na tela.
 4. **Combinar com os fornecedores principais:** colocar a obra na nota. É o que mais aumenta o acerto automático. Mensagem sugerida:
    > "A partir de agora, por favor informe nas Informações Complementares da NF-e: **Obra: OBR-001 – Residencial Aurora** (ou o código da obra do pedido) e envie o XML para notas@construtora.com.br."

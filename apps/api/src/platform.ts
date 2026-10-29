@@ -10,6 +10,7 @@ import type { AuthUser } from './app.js'
 import { db } from './db/client.js'
 import { auditLogs, companies, users } from './db/schema.js'
 import { createCompany, createUser, temporaryPassword } from './services/accounts.js'
+import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { audit } from './services/audit.js'
 import { AppError, badRequest, notFound } from './services/errors.js'
 import bcrypt from 'bcryptjs'
@@ -36,8 +37,10 @@ async function companiesWithUsage(id?: string) {
       (SELECT count(*)::int FROM fiscal_documents d WHERE d.company_id = c.id AND d.status IN ('RECEBIDO','EM_REVISAO')) AS documents_pending,
       (SELECT coalesce(sum(d.total_amount),0)::bigint FROM fiscal_documents d WHERE d.company_id = c.id AND d.status = 'APROVADO' AND d.created_at > now() - interval '30 days') AS approved_30d,
       (SELECT max(d.created_at) FROM fiscal_documents d WHERE d.company_id = c.id) AS last_document_at,
-      (SELECT max(u.last_login_at) FROM users u WHERE u.company_id = c.id) AS last_login_at
+      (SELECT max(u.last_login_at) FROM users u WHERE u.company_id = c.id) AS last_login_at,
+      m.enabled AS mail_enabled, m.last_success_at AS mail_last_success_at, m.last_error AS mail_last_error, m.documents_received AS mail_documents
     FROM companies c
+    LEFT JOIN mail_inboxes m ON m.company_id = c.id
     ${id ? sql`WHERE c.id = ${id}` : sql``}
     ORDER BY c.created_at DESC`)
   return rows.map((r: any) => ({
@@ -56,6 +59,10 @@ async function companiesWithUsage(id?: string) {
     approved30d: Number(r.approved_30d),
     lastDocumentAt: r.last_document_at,
     lastLoginAt: r.last_login_at,
+    mail:
+      r.mail_enabled === null || r.mail_enabled === undefined
+        ? null
+        : { enabled: r.mail_enabled as boolean, lastSuccessAt: r.mail_last_success_at, lastError: r.mail_last_error as string | null, documents: Number(r.mail_documents) },
   }))
 }
 
@@ -180,6 +187,41 @@ export async function registerPlatformRoutes(r: FastifyInstance) {
     if (!u) throw notFound('Usuário')
     await audit(db, { companyId: u.companyId, userId: owner.id, entity: 'user', entityId: id, action: 'password_reset_by_platform' })
     return { email: u.email, password }
+  })
+
+  // ------------------------------------------------ e-mail de notas de qualquer construtora
+  const inboxBody = z.object({
+    host: z.string().min(3),
+    port: z.number().int().min(1).max(65535),
+    secure: z.boolean(),
+    username: z.string().min(3),
+    password: z.string().optional(),
+    mailbox: z.string().optional(),
+    enabled: z.boolean().optional(),
+  })
+  r.get('/api/platform/companies/:id/mail-inbox', async (req) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+    return { inbox: await getInbox(id), providers: PROVIDERS }
+  })
+  r.put('/api/platform/companies/:id/mail-inbox', async (req) => {
+    const owner = await requireOwner(req)
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+    return saveInbox(id, owner.id, inboxBody.parse(req.body))
+  })
+  r.post('/api/platform/companies/:id/mail-inbox/check', async (req) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+    return { result: await checkInbox(id), inbox: await getInbox(id) }
+  })
+  r.post('/api/platform/companies/:id/mail-inbox/:action', async (req) => {
+    const owner = await requireOwner(req)
+    const { id, action } = z.object({ id: z.string().uuid(), action: z.enum(['pause', 'resume']) }).parse(req.params)
+    return { inbox: await setInboxEnabled(id, owner.id, action === 'resume') }
+  })
+  r.delete('/api/platform/companies/:id/mail-inbox', async (req) => {
+    const owner = await requireOwner(req)
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+    await removeInbox(id, owner.id)
+    return { inbox: null }
   })
 
   /** Suporte: entra na construtora como administradora. Fica registrado na auditoria dela. */

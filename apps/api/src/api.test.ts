@@ -319,3 +319,83 @@ describe('painel da plataforma', () => {
     expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: pilotAdminEmail, password: reset.password } })).statusCode).toBe(403)
   })
 })
+
+describe('e-mail de notas (IMAP real em memória)', () => {
+  let imapServer: any
+  const IMAP_PORT = 11143
+  const conn = { host: '127.0.0.1', port: IMAP_PORT, secure: false, username: 'notas@teste.com', password: 'senha-app-123', mailbox: 'INBOX' }
+
+  async function deliver(xml: string | null, subject = 'NF-e') {
+    const MailComposer = (await import('nodemailer/lib/mail-composer/index.js')).default as any
+    const mail = new MailComposer({
+      from: 'fornecedor@x.com',
+      to: 'notas@teste.com',
+      subject,
+      text: 'Segue a nota.',
+      attachments: xml ? [{ filename: 'NFe-teste.xml', content: xml, contentType: 'application/xml' }, { filename: 'danfe.pdf', content: Buffer.from('%PDF-1.4') }] : [],
+    })
+    const raw: Buffer = await mail.compile().build()
+    const { ImapFlow } = await import('imapflow')
+    const c = new ImapFlow({ host: '127.0.0.1', port: IMAP_PORT, secure: false, auth: { user: conn.username, pass: conn.password }, logger: false })
+    await c.connect()
+    await c.append('INBOX', raw, [])
+    await c.logout()
+  }
+
+  beforeAll(async () => {
+    const hoodiecrow = (await import('hoodiecrow-imap')).default as any
+    imapServer = hoodiecrow({
+      plugins: ['ID', 'SASL-IR', 'AUTH-PLAIN', 'NAMESPACE', 'IDLE', 'ENABLE', 'UNSELECT', 'LITERALPLUS', 'UIDPLUS', 'SPECIAL-USE'],
+      storage: { INBOX: { messages: [] } },
+      users: { [conn.username]: { password: conn.password } },
+    })
+    await new Promise<void>((res) => imapServer.listen(IMAP_PORT, res))
+  })
+  afterAll(() => imapServer?.close?.())
+
+  it('senha errada vira mensagem clara e não salva', async () => {
+    const res = await api('PUT', '/api/mail-inbox', { ...conn, password: 'errada' })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().message).toMatch(/senha/i)
+    expect((await api('GET', '/api/mail-inbox')).json().inbox).toBeNull()
+  })
+
+  it('conecta, guarda a senha criptografada e não devolve a senha', async () => {
+    const res = await api('PUT', '/api/mail-inbox', conn)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().test.ok).toBe(true)
+    const inbox = (await api('GET', '/api/mail-inbox')).json().inbox
+    expect(inbox.username).toBe(conn.username)
+    expect(inbox.hasPassword).toBe(true)
+    expect(JSON.stringify(inbox)).not.toContain(conn.password)
+  })
+
+  it('lê a caixa: importa o XML, ignora o PDF e e-mails sem anexo', async () => {
+    await deliver(nfe(3001, { extraInfo: 'Obra: Residencial Teste' }))
+    await deliver(null, 'Bom dia')
+    const res = (await api('POST', '/api/mail-inbox/check')).json()
+    expect(res.result.ok).toBe(true)
+    expect(res.result.messages).toBe(2)
+    expect(res.result.created).toBe(1)
+    expect(res.inbox.documentsReceived).toBe(1)
+    const docs = (await api('GET', '/api/documents?q=3001')).json()
+    expect(docs[0].source).toBe('EMAIL')
+    // segunda leitura: nada novo (já marcadas como lidas)
+    expect((await api('POST', '/api/mail-inbox/check')).json().result.messages).toBe(0)
+    // fornecedor reenvia a mesma nota: reconhece e não duplica
+    await deliver(nfe(3001, { extraInfo: 'Obra: Residencial Teste' }), 'reenvio')
+    const again = (await api('POST', '/api/mail-inbox/check')).json().result
+    expect(again.created).toBe(0)
+    expect(again.duplicates).toBe(1)
+  })
+
+  it('erro de leitura fica registrado e aparece na plataforma; pausar e remover', async () => {
+    imapServer.users[conn.username].password = 'trocada'
+    const res = (await api('POST', '/api/mail-inbox/check')).json()
+    expect(res.result.ok).toBe(false)
+    expect(res.inbox.lastError).toMatch(/senha/i)
+    imapServer.users[conn.username].password = conn.password
+    expect((await api('POST', '/api/mail-inbox/pause')).json().inbox.enabled).toBe(false)
+    expect((await api('DELETE', '/api/mail-inbox')).json().inbox).toBeNull()
+  })
+})

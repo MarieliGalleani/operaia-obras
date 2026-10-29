@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/lib/api'
+import MailInboxCard from '@/components/MailInboxCard.vue'
 import { date } from '@/lib/format'
 import { toast, toastError } from '@/lib/toast'
 import { useAuth } from '@/stores/auth'
@@ -87,7 +88,7 @@ async function copy(text: string) {
 }
 
 const planned = [
-  { name: 'E-mail (via n8n)', desc: 'Caixa dedicada recebe as notas e envia os XMLs para o endereço acima.', status: 'Disponível', color: 'success' },
+  { name: 'E-mail de notas', desc: 'O sistema lê a caixa de notas e importa os XMLs sozinho (acima).', status: 'Disponível', color: 'success' },
   { name: 'Planilha / CSV', desc: 'Exporte lançamentos por obra (Visão Geral) e contas a pagar para o financeiro e a contabilidade.', status: 'Disponível', color: 'success' },
   { name: 'Sienge · TOTVS · Conta Azul', desc: 'Sincronizar obras, fornecedores e títulos com o ERP existente.', status: 'Planejado', color: 'grey' },
   { name: 'Google Drive', desc: 'Arquivar XML e PDF por obra e mês.', status: 'Planejado', color: 'grey' },
@@ -172,10 +173,12 @@ const planned = [
     </v-card>
   </v-dialog>
 
+  <MailInboxCard base="/api/mail-inbox" class="mb-4" />
+
   <v-card class="pa-5 mb-4">
-    <div class="card-title mb-1">Receber NF-e automaticamente</div>
+    <div class="card-title mb-1">Integração por API (avançado)</div>
     <div class="text-body-2 muted mb-4">
-      Configure um fluxo no n8n (ou outro automatizador) que pega os anexos .xml da caixa de notas e faz um POST neste endpoint. Reenvios da mesma nota são ignorados.
+      Para enviar notas a partir de outro sistema ou automatizador (n8n, ERP). Reenvios da mesma nota são ignorados.
     </div>
     <v-text-field :model-value="reveal ? info?.apiKey : '•'.repeat(24)" label="Chave de integração" readonly class="mb-3" style="max-width: 520px">
       <template #append-inner>

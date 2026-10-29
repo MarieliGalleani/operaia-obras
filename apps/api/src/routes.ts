@@ -21,6 +21,7 @@ import { changePassword, createUser } from './services/accounts.js'
 import { registerPlatformRoutes } from './platform.js'
 import { audit } from './services/audit.js'
 import { exportAllocations, exportPayables } from './services/exports.js'
+import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { getDashboard } from './services/dashboard.js'
 import {
   approveDocument,
@@ -451,7 +452,7 @@ export async function registerRoutes(app: FastifyInstance) {
       return db
         .select({ id: users.id, name: users.name, email: users.email, role: users.role, active: users.active, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
         .from(users)
-        .where(and(eq(users.companyId, me(req).companyId), eq(users.isPlatformOwner, false)))
+        .where(eq(users.companyId, me(req).companyId))
         .orderBy(users.name)
     })
 
@@ -499,6 +500,40 @@ export async function registerRoutes(app: FastifyInstance) {
         .header('Content-Type', 'text/csv; charset=utf-8')
         .header('Content-Disposition', `attachment; filename="lancamentos-por-obra-${q.from ?? 'inicio'}-a-${q.to ?? 'hoje'}.csv"`)
         .send(csv)
+    })
+
+    // ------------------------------------------------------ e-mail de notas
+    const inboxBody = z.object({
+      host: z.string().min(3),
+      port: z.number().int().min(1).max(65535),
+      secure: z.boolean(),
+      username: z.string().min(3),
+      password: z.string().optional(),
+      mailbox: z.string().optional(),
+      enabled: z.boolean().optional(),
+    })
+    r.get('/api/mail-inbox', async (req) => {
+      requireRole(req, 'ADMIN')
+      return { inbox: await getInbox(me(req).companyId), providers: PROVIDERS }
+    })
+    r.put('/api/mail-inbox', async (req) => {
+      requireRole(req, 'ADMIN')
+      return saveInbox(me(req).companyId, me(req).sub, inboxBody.parse(req.body))
+    })
+    r.post('/api/mail-inbox/check', async (req) => {
+      requireRole(req, 'ADMIN')
+      const res = await checkInbox(me(req).companyId)
+      return { result: res, inbox: await getInbox(me(req).companyId) }
+    })
+    r.post('/api/mail-inbox/:action', async (req) => {
+      requireRole(req, 'ADMIN')
+      const { action } = z.object({ action: z.enum(['pause', 'resume']) }).parse(req.params)
+      return { inbox: await setInboxEnabled(me(req).companyId, me(req).sub, action === 'resume') }
+    })
+    r.delete('/api/mail-inbox', async (req) => {
+      requireRole(req, 'ADMIN')
+      await removeInbox(me(req).companyId, me(req).sub)
+      return { inbox: null }
     })
 
     r.get('/api/integrations', async (req) => {

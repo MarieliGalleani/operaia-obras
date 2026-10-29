@@ -64,6 +64,8 @@ export const api = {
   get: <T>(url: string) => request<T>('GET', url),
   post: <T>(url: string, body?: unknown) => request<T>('POST', url, body),
   patch: <T>(url: string, body?: unknown) => request<T>('PATCH', url, body),
+  put: <T>(url: string, body?: unknown) => request<T>('PUT', url, body),
+  request: <T>(method: string, url: string, body?: unknown) => request<T>(method, url, body),
   /** Baixa um arquivo autenticado (CSV etc.) */
   async download(url: string, fallbackName: string) {
     if (DEMO) throw new ApiError(403, 'DEMO', 'Exportações ficam desativadas na demonstração.')

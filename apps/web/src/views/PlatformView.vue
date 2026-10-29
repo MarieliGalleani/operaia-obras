@@ -22,6 +22,7 @@ export interface CompanyUsage {
   approved30d: number
   lastDocumentAt: string | null
   lastLoginAt: string | null
+  mail: { enabled: boolean; lastSuccessAt: string | null; lastError: string | null; documents: number } | null
 }
 interface Overview {
   companiesActive: number
@@ -62,6 +63,13 @@ function health(c: CompanyUsage) {
   if (d === null) return { color: 'info', text: 'Implantando' }
   if (d > 14) return { color: 'warning', text: `Parada há ${d} dias` }
   return { color: 'success', text: 'Em uso' }
+}
+
+function mailState(c: CompanyUsage) {
+  if (!c.mail) return { color: 'grey', icon: 'mdi-email-off-outline', text: 'Não conectado', hint: 'Notas só por upload' }
+  if (!c.mail.enabled) return { color: 'grey', icon: 'mdi-pause-circle-outline', text: 'Pausado', hint: 'Leitura pausada' }
+  if (c.mail.lastError) return { color: 'error', icon: 'mdi-alert-circle', text: 'Com erro', hint: c.mail.lastError }
+  return { color: 'success', icon: 'mdi-check-circle', text: `${c.mail.documents} nota(s)`, hint: c.mail.lastSuccessAt ? `Última leitura ${date(c.mail.lastSuccessAt)}` : 'Aguardando a primeira leitura' }
 }
 
 // ---- nova construtora
@@ -150,6 +158,7 @@ async function enter(c: CompanyUsage) {
           <th class="text-right">Obras</th>
           <th class="text-right">Notas 30d</th>
           <th class="text-right">A conferir</th>
+          <th>E-mail de notas</th>
           <th>Último acesso</th>
           <th></th>
         </tr>
@@ -165,13 +174,20 @@ async function enter(c: CompanyUsage) {
           <td class="text-right">{{ c.projectsActive }}</td>
           <td class="text-right">{{ c.documents30d }}</td>
           <td class="text-right" :class="c.documentsPending > 10 ? 'text-warning font-weight-bold' : ''">{{ c.documentsPending }}</td>
+          <td>
+            <v-tooltip :text="mailState(c).hint" location="top">
+              <template #activator="{ props }">
+                <span v-bind="props" class="text-no-wrap"><v-icon size="16" :color="mailState(c).color" class="mr-1">{{ mailState(c).icon }}</v-icon>{{ mailState(c).text }}</span>
+              </template>
+            </v-tooltip>
+          </td>
           <td>{{ c.lastLoginAt ? date(c.lastLoginAt) : 'nunca' }}</td>
           <td class="text-right" @click.stop>
             <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-login-variant" :loading="entering === c.id" @click="enter(c)">Entrar como</v-btn>
           </td>
         </tr>
         <tr v-if="data && !rows.length">
-          <td colspan="8" class="text-center muted py-6">Nenhuma construtora neste filtro.</td>
+          <td colspan="9" class="text-center muted py-6">Nenhuma construtora neste filtro.</td>
         </tr>
       </tbody>
     </v-table>
@@ -203,7 +219,7 @@ async function enter(c: CompanyUsage) {
         <v-textarea id="welcome-message" :model-value="welcome" readonly rows="7" class="mb-2" />
         <v-btn block color="primary" variant="tonal" prepend-icon="mdi-content-copy" class="mb-4" @click="copy(welcome, 'Mensagem copiada')">Copiar mensagem</v-btn>
         <div class="text-caption muted">
-          A chave de integração e a configuração do e-mail de notas ficam na página da construtora.
+          Próximo passo: na página da construtora, conecte o e-mail de notas (ou deixe o admin fazer isso em Configurações).
         </div>
         <div class="d-flex justify-end ga-2 mt-5">
           <v-btn variant="text" @click="dialog = false">Fechar</v-btn>

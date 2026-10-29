@@ -165,9 +165,22 @@ O backup guarda 14 dias. Para restaurar: `./scripts/restore.sh backups/db-AAAA-M
 
 **Recomendado:** copiar os backups para fora da VPS (Google Drive via `rclone`). A linha já está comentada no fim do `backup.sh`.
 
-## 9. E-mail de notas (n8n)
+## 9. E-mail de notas
 
-Siga [`integrations/n8n/README.md`](../integrations/n8n/README.md). São 10 minutos por construtora.
+É configurado pela tela, sem n8n:
+
+- a construtora conecta em **Configurações → E-mail de notas**;
+- ou você conecta por ela em **Plataforma → construtora → E-mail de notas**.
+
+O sistema lê as caixas a cada 2 minutos (`MAIL_POLL_SECONDS`) e importa os XMLs anexados. A situação de cada caixa aparece na lista da Plataforma: conectada, com erro ou pausada.
+
+A VPS precisa conseguir sair pela porta **993** (IMAP com SSL). Confira com:
+
+```bash
+nc -vz imap.gmail.com 993
+```
+
+O fluxo do n8n em `integrations/n8n/` continua disponível como alternativa, para quem já usa n8n.
 
 ## 10. Atualizar para uma nova versão
 

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import KpiCard from '@/components/KpiCard.vue'
+import MailInboxCard from '@/components/MailInboxCard.vue'
 import { api } from '@/lib/api'
 import { brl, cnpj, date } from '@/lib/format'
 import { toast, toastError } from '@/lib/toast'
@@ -32,6 +33,11 @@ const ACTIONS: Record<string, string> = {
   password_changed: 'Senha trocada pela pessoa',
   password_reset: 'Senha resetada (linha de comando)',
   password_reset_by_platform: 'Senha resetada pela plataforma',
+  mail_inbox_connected: 'E-mail de notas conectado',
+  mail_inbox_updated: 'E-mail de notas alterado',
+  mail_inbox_paused: 'E-mail de notas pausado',
+  mail_inbox_enabled: 'E-mail de notas retomado',
+  mail_inbox_removed: 'E-mail de notas desconectado',
   updated_by_platform: 'Acesso alterado pela plataforma',
 }
 
@@ -231,6 +237,8 @@ async function rotateKey() {
             </v-table>
           </div>
         </v-card>
+
+        <MailInboxCard :base="`/api/platform/companies/${data.id}/mail-inbox`" for-platform class="mb-3" />
 
         <v-card class="pa-5 mb-3">
           <div class="card-title mb-1">Chave de integração</div>

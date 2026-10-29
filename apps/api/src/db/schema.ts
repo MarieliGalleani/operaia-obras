@@ -9,6 +9,7 @@
 import {
   bigint,
   boolean,
+  integer,
   index,
   jsonb,
   numeric,
@@ -307,3 +308,28 @@ export const auditLogs = pgTable(
 
 export type CostCategory = (typeof costCategory.enumValues)[number]
 export const COST_CATEGORIES = costCategory.enumValues
+
+/** Caixa de e-mail de notas de cada construtora (lida automaticamente pelo sistema) */
+export const mailInboxes = pgTable('mail_inboxes', {
+  id: id(),
+  companyId: uuid('company_id')
+    .notNull()
+    .unique()
+    .references(() => companies.id, { onDelete: 'cascade' }),
+  host: text('host').notNull(),
+  port: integer('port').notNull().default(993),
+  secure: boolean('secure').notNull().default(true),
+  username: text('username').notNull(),
+  /** senha criptografada (AES-256-GCM); nunca volta para a tela */
+  passwordEnc: text('password_enc').notNull(),
+  mailbox: text('mailbox').notNull().default('INBOX'),
+  enabled: boolean('enabled').notNull().default(true),
+  lastCheckAt: timestamp('last_check_at', { withTimezone: true }),
+  lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+  messagesProcessed: integer('messages_processed').notNull().default(0),
+  documentsReceived: integer('documents_received').notNull().default(0),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
