@@ -6,6 +6,7 @@
  *   node dist/cli/admin.js criar-usuario --cnpj 12345678000190 --nome "Ciclano" --email c@x.com --perfil FINANCEIRO
  *   node dist/cli/admin.js resetar-senha --email fulana@construtora.com.br
  *   node dist/cli/admin.js listar
+ *   node dist/cli/admin.js dona-plataforma --email voce@email.com   (libera o Painel da Plataforma)
  *
  * Em desenvolvimento: pnpm --filter @operaia-obras/api admin <comando> ...
  */
@@ -60,8 +61,15 @@ async function main() {
       console.table(rows.rows.map((r: any) => ({ construtora: r.name, cnpj: formatCnpj(r.cnpj), usuarios: Number(r.usuarios), notas: Number(r.notas), ultima_nota: r.ultima_nota ? new Date(r.ultima_nota).toLocaleString('pt-BR') : '—' })))
       break
     }
+    case 'dona-plataforma': {
+      const email = need('email').trim().toLowerCase()
+      const res = await db.execute(sql`UPDATE users SET is_platform_owner = true, role = 'ADMIN' WHERE email = ${email} RETURNING name`)
+      if (!res.rows.length) throw new Error(`Usuário ${email} não encontrado. Crie primeiro com criar-construtora ou criar-usuario.`)
+      console.log(`✔ ${res.rows[0].name} agora é dona da plataforma. Saia e entre de novo para ver o menu Plataforma.`)
+      break
+    }
     default:
-      console.log('Comandos: criar-construtora | criar-usuario | resetar-senha | listar (veja o topo de src/cli/admin.ts)')
+      console.log('Comandos: criar-construtora | criar-usuario | resetar-senha | listar | dona-plataforma (veja o topo de src/cli/admin.ts)')
   }
 }
 

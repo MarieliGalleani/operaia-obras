@@ -18,6 +18,7 @@ import {
 } from './db/schema.js'
 import { isValidCnpj, onlyDigits } from './domain/cnpj.js'
 import { changePassword, createUser } from './services/accounts.js'
+import { registerPlatformRoutes } from './platform.js'
 import { audit } from './services/audit.js'
 import { exportAllocations, exportPayables } from './services/exports.js'
 import { getDashboard } from './services/dashboard.js'
@@ -66,9 +67,21 @@ export async function registerRoutes(app: FastifyInstance) {
     if (!user || !(await bcrypt.compare(body.password, user.passwordHash))) {
       return reply.code(401).send({ code: 'LOGIN_INVALIDO', message: 'E-mail ou senha incorretos.' })
     }
+    if (!user.active) {
+      return reply.code(403).send({ code: 'ACESSO_DESATIVADO', message: 'Seu acesso foi desativado. Fale com o administrador da sua construtora.' })
+    }
     const company = await db.query.companies.findFirst({ where: eq(companies.id, user.companyId) })
-    const token = app.jwt.sign({ sub: user.id, companyId: user.companyId, role: user.role, name: user.name })
-    return { token, user: { id: user.id, name: user.name, email: user.email, role: user.role }, company: { id: company!.id, name: company!.name, cnpj: company!.cnpj } }
+    if (company!.status === 'SUSPENSA' && !user.isPlatformOwner) {
+      return reply.code(403).send({ code: 'CONSTRUTORA_SUSPENSA', message: 'O acesso desta construtora está suspenso. Fale com a OperaIA.' })
+    }
+    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id))
+    const token = app.jwt.sign({ sub: user.id, companyId: user.companyId, role: user.role, name: user.name, platform: user.isPlatformOwner || undefined })
+    return {
+      token,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, isPlatformOwner: user.isPlatformOwner },
+      company: { id: company!.id, name: company!.name, cnpj: company!.cnpj },
+      impersonating: false,
+    }
   })
 
   // ------------------------------------------------- integrações (sem login)
@@ -81,6 +94,7 @@ export async function registerRoutes(app: FastifyInstance) {
     if (typeof key !== 'string') return reply.code(401).send({ code: 'SEM_CHAVE', message: 'Informe o header x-api-key.' })
     const company = await db.query.companies.findFirst({ where: eq(companies.apiKey, key) })
     if (!company) return reply.code(401).send({ code: 'CHAVE_INVALIDA', message: 'Chave de integração inválida.' })
+    if (company.status === 'SUSPENSA') return reply.code(403).send({ code: 'CONSTRUTORA_SUSPENSA', message: 'Construtora suspensa: notas não estão sendo recebidas.' })
     const source = req.headers['x-source'] === 'email' ? 'EMAIL' : 'API'
     const files = req.isMultipart() ? await readUpload(req) : Buffer.isBuffer(req.body) ? [{ fileName: String(req.headers['x-filename'] ?? 'nfe.xml'), content: req.body }] : []
     if (!files.length) throw badRequest('SEM_ARQUIVO', 'Envie o XML no corpo (application/xml) ou em multipart.')
@@ -99,13 +113,18 @@ export async function registerRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------- protegido
   await app.register(async (r) => {
     r.addHook('onRequest', app.authenticate)
+    await r.register(async (p) => registerPlatformRoutes(p))
 
     r.get('/api/auth/me', async (req) => {
       const u = me(req)
       const user = await db.query.users.findFirst({ where: eq(users.id, u.sub) })
       const company = await db.query.companies.findFirst({ where: eq(companies.id, u.companyId) })
       if (!user || !company) throw notFound('Usuário')
-      return { user: { id: user.id, name: user.name, email: user.email, role: user.role }, company: { id: company.id, name: company.name, cnpj: company.cnpj } }
+      return {
+        user: { id: user.id, name: user.name, email: user.email, role: u.role, isPlatformOwner: user.isPlatformOwner },
+        company: { id: company.id, name: company.name, cnpj: company.cnpj, status: company.status },
+        impersonating: !!u.impersonating,
+      }
     })
 
     // ---------------------------------------------------------- dashboard
@@ -430,10 +449,27 @@ export async function registerRoutes(app: FastifyInstance) {
     r.get('/api/users', async (req) => {
       requireRole(req, 'ADMIN')
       return db
-        .select({ id: users.id, name: users.name, email: users.email, role: users.role, createdAt: users.createdAt })
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, active: users.active, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
         .from(users)
-        .where(eq(users.companyId, me(req).companyId))
+        .where(and(eq(users.companyId, me(req).companyId), eq(users.isPlatformOwner, false)))
         .orderBy(users.name)
+    })
+
+    /** Admin da construtora muda perfil ou desativa alguém da própria equipe */
+    r.patch('/api/users/:id', async (req) => {
+      requireRole(req, 'ADMIN')
+      const u = me(req)
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      const body = z.object({ role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA']).optional(), active: z.boolean().optional() }).parse(req.body)
+      if (id === u.sub) throw badRequest('PROPRIO', 'Você não pode alterar o seu próprio perfil ou acesso.')
+      const [row] = await db
+        .update(users)
+        .set(body)
+        .where(and(eq(users.id, id), eq(users.companyId, u.companyId), eq(users.isPlatformOwner, false)))
+        .returning({ id: users.id, role: users.role, active: users.active })
+      if (!row) throw notFound('Usuário')
+      await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'user', entityId: id, action: 'updated', data: body })
+      return row
     })
 
     r.post('/api/users', async (req, reply) => {

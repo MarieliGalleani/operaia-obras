@@ -7,14 +7,20 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { ZodError } from 'zod'
+import { pool } from './db/client.js'
 import { AppError } from './services/errors.js'
 import { registerRoutes } from './routes.js'
 
 export interface AuthUser {
   sub: string
+  /** Construtora em que a pessoa está operando (na visão "entrar como", é a construtora visitada) */
   companyId: string
   role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA'
   name: string
+  /** Dona da plataforma OperaIA */
+  platform?: boolean
+  /** Sessão de suporte: a dona está vendo a construtora companyId */
+  impersonating?: boolean
 }
 
 declare module '@fastify/jwt' {
@@ -57,6 +63,25 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
       await req.jwtVerify()
     } catch {
       return reply.code(401).send({ code: 'NAO_AUTENTICADO', message: 'Faça login para continuar.' })
+    }
+    // Revalida a cada requisição: desativar uma pessoa ou suspender a construtora vale na hora,
+    // sem esperar o login expirar.
+    const u = req.user
+    const { rows } = await pool.query<{ active: boolean; is_platform_owner: boolean; status: string | null }>(
+      `SELECT u.active, u.is_platform_owner, c.status
+         FROM users u LEFT JOIN companies c ON c.id = $2
+        WHERE u.id = $1`,
+      [u.sub, u.companyId],
+    )
+    const row = rows[0]
+    if (!row || !row.active || !row.status) {
+      return reply.code(401).send({ code: 'ACESSO_ENCERRADO', message: 'Seu acesso foi desativado. Fale com o administrador.' })
+    }
+    if (u.platform && !row.is_platform_owner) {
+      return reply.code(401).send({ code: 'ACESSO_ENCERRADO', message: 'Faça login novamente.' })
+    }
+    if (row.status === 'SUSPENSA' && !row.is_platform_owner) {
+      return reply.code(403).send({ code: 'CONSTRUTORA_SUSPENSA', message: 'O acesso desta construtora está suspenso. Fale com a OperaIA.' })
     }
   })
 

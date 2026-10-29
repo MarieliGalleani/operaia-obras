@@ -115,3 +115,7 @@ body,
 .clickable-rows tbody tr {
   cursor: pointer;
 }
+
+.v-switch .v-label {
+  white-space: nowrap;
+}

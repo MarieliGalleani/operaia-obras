@@ -4,7 +4,7 @@
  */
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'node:crypto'
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from './app.js'
 import { db, pool } from './db/client.js'
@@ -242,5 +242,80 @@ describe('fluxo de documentos', () => {
     expect(d.kpis.appropriatedCost).toBe(11_000_00)
     expect(d.kpis.openPayables).toBe(7_000_00)
     expect(d.projects.find((p: any) => p.id === projectA).committedPct).toBe(90)
+  })
+})
+
+describe('painel da plataforma', () => {
+  let ownerToken = ''
+  let pilotId = ''
+  let pilotAdminEmail = ''
+  let pilotAdminPassword = ''
+  let pilotKey = ''
+
+  beforeAll(async () => {
+    const o = await makeCompany(cnpjWithDigits(rnd() + '0001'), `dona${rnd()}@operaia.com`)
+    await db.update(users).set({ isPlatformOwner: true }).where(eq(users.companyId, o.company.id))
+    const email = (await db.query.users.findFirst({ where: eq(users.companyId, o.company.id) }))!.email
+    ownerToken = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'senha123' } })).json().token
+  })
+
+  it('só a dona acessa', async () => {
+    expect((await api('GET', '/api/platform/overview')).statusCode).toBe(403)
+    const ov = await api('GET', '/api/platform/overview', undefined, ownerToken)
+    expect(ov.statusCode).toBe(200)
+    expect(ov.json().companies.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('cria construtora com o primeiro admin', async () => {
+    pilotAdminEmail = `admin${rnd()}@piloto.com`
+    const res = await api('POST', '/api/platform/companies', { name: 'Piloto Teste', cnpj: cnpjWithDigits(rnd() + '0001'), adminName: 'Admin Piloto', adminEmail: pilotAdminEmail }, ownerToken)
+    expect(res.statusCode).toBe(201)
+    pilotId = res.json().company.id
+    pilotKey = res.json().company.apiKey
+    pilotAdminPassword = res.json().password
+    createdCompanies.push(pilotId)
+    // e-mail repetido não deixa construtora órfã
+    const dup = await api('POST', '/api/platform/companies', { name: 'Dup', cnpj: cnpjWithDigits(rnd() + '0001'), adminName: 'Outra Pessoa', adminEmail: pilotAdminEmail }, ownerToken)
+    expect(dup.statusCode).toBe(409)
+    const ov = (await api('GET', '/api/platform/overview', undefined, ownerToken)).json()
+    expect(ov.companies.some((c: any) => c.name === 'Dup')).toBe(false)
+  })
+
+  it('suspender bloqueia login, sessão aberta e integração na hora', async () => {
+    const pilotToken = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: pilotAdminEmail, password: pilotAdminPassword } })).json().token
+    expect((await api('GET', '/api/dashboard', undefined, pilotToken)).statusCode).toBe(200)
+    expect((await api('PATCH', `/api/platform/companies/${pilotId}`, { status: 'SUSPENSA', notes: 'fim do piloto' }, ownerToken)).statusCode).toBe(200)
+    expect((await api('GET', '/api/dashboard', undefined, pilotToken)).statusCode).toBe(403)
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: pilotAdminEmail, password: pilotAdminPassword } })).statusCode).toBe(403)
+    const integ = await app.inject({ method: 'POST', url: '/api/integrations/nfe', headers: { 'x-api-key': pilotKey, 'content-type': 'application/xml' }, payload: '<x/>' })
+    expect(integ.statusCode).toBe(403)
+    await api('PATCH', `/api/platform/companies/${pilotId}`, { status: 'ATIVA' }, ownerToken)
+    expect((await api('GET', '/api/dashboard', undefined, pilotToken)).statusCode).toBe(200)
+    const detail = (await api('GET', `/api/platform/companies/${pilotId}`, undefined, ownerToken)).json()
+    expect(detail.history.map((h: any) => h.action)).toEqual(expect.arrayContaining(['suspended', 'reactivated']))
+  })
+
+  it('entra como a construtora para suporte e volta', async () => {
+    const imp = await api('POST', `/api/platform/companies/${pilotId}/impersonate`, undefined, ownerToken)
+    const t = imp.json().token
+    const meRes = (await api('GET', '/api/auth/me', undefined, t)).json()
+    expect(meRes.company.id).toBe(pilotId)
+    expect(meRes.impersonating).toBe(true)
+    // equipe da construtora não lista a dona
+    const team = (await api('GET', '/api/users', undefined, t)).json()
+    expect(team.map((u: any) => u.email)).toEqual([pilotAdminEmail])
+    const back = (await api('POST', '/api/platform/return', undefined, t)).json().token
+    expect((await api('GET', '/api/auth/me', undefined, back)).json().impersonating).toBe(false)
+  })
+
+  it('desativa pessoa e reseta senha', async () => {
+    const detail = (await api('GET', `/api/platform/companies/${pilotId}`, undefined, ownerToken)).json()
+    const admin = detail.users[0]
+    const reset = (await api('POST', `/api/platform/users/${admin.id}/reset-password`, undefined, ownerToken)).json()
+    const tk = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: pilotAdminEmail, password: reset.password } })).json().token
+    expect(tk).toBeTruthy()
+    await api('PATCH', `/api/platform/users/${admin.id}`, { active: false }, ownerToken)
+    expect((await api('GET', '/api/dashboard', undefined, tk)).statusCode).toBe(401)
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: pilotAdminEmail, password: reset.password } })).statusCode).toBe(403)
   })
 })

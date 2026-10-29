@@ -25,7 +25,25 @@ const nav = [
   { title: 'Inteligência', icon: 'mdi-creation-outline', to: '/inteligencia' },
   { title: 'Configurações', icon: 'mdi-cog-outline', to: '/configuracoes', admin: true },
 ]
-const visibleNav = computed(() => nav.filter((n) => !n.admin || auth.me?.user.role === 'ADMIN'))
+const visibleNav = computed(() => {
+  const items = nav.filter((n) => !n.admin || auth.me?.user.role === 'ADMIN')
+  return auth.isPlatformOwner && !auth.impersonating
+    ? [{ title: 'Plataforma', icon: 'mdi-shield-crown-outline', to: '/plataforma' }, ...items]
+    : items
+})
+
+const leaving = ref(false)
+async function backToPlatform() {
+  leaving.value = true
+  try {
+    await auth.returnToPlatform()
+    router.push('/plataforma')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    leaving.value = false
+  }
+}
 const isPublic = computed(() => !!route.meta.public)
 
 function doSearch() {
@@ -118,6 +136,12 @@ function logout() {
       </v-app-bar>
 
       <v-main>
+        <div v-if="auth.impersonating" class="support-bar">
+          <v-icon size="18" class="mr-2">mdi-lifebuoy</v-icon>
+          <span>Você está dentro de <strong>{{ auth.me?.company.name }}</strong> como suporte. Tudo o que fizer fica registrado na auditoria dela.</span>
+          <v-spacer />
+          <v-btn size="small" variant="flat" color="white" class="text-secondary" :loading="leaving" @click="backToPlatform">Voltar à plataforma</v-btn>
+        </div>
         <div v-if="DEMO" class="demo-bar">
           <v-icon size="16" class="mr-1">mdi-eye-outline</v-icon>
           Demonstração com dados fictícios da Construtora Alpha. Navegue à vontade; ações que gravam (aprovar, pagar, enviar) ficam desativadas.
@@ -165,6 +189,16 @@ function logout() {
   .page-wrap {
     padding: 16px;
   }
+}
+.support-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: #2d5b9a;
+  color: #fff;
+  font-size: 0.85rem;
+  padding: 8px 28px;
 }
 .demo-bar {
   background: #fff4e0;

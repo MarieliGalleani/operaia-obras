@@ -8,6 +8,7 @@
  */
 import {
   bigint,
+  boolean,
   index,
   jsonb,
   numeric,
@@ -57,6 +58,7 @@ export const alertType = pgEnum('alert_type', [
 ])
 export const alertSeverity = pgEnum('alert_severity', ['CRITICO', 'ATENCAO', 'INFO', 'OPORTUNIDADE'])
 export const alertStatus = pgEnum('alert_status', ['ABERTO', 'RESOLVIDO', 'IGNORADO'])
+export const companyStatus = pgEnum('company_status', ['ATIVA', 'SUSPENSA'])
 
 const money = (name: string) => bigint(name, { mode: 'number' })
 const id = () => uuid('id').primaryKey().defaultRandom()
@@ -68,6 +70,11 @@ export const companies = pgTable('companies', {
   cnpj: text('cnpj').notNull().unique(),
   /** Chave para integrações (n8n, e-mail) enviarem XMLs */
   apiKey: text('api_key').notNull().unique(),
+  /** SUSPENSA: ninguém da construtora entra e a integração recusa notas (dados preservados) */
+  status: companyStatus('status').notNull().default('ATIVA'),
+  /** Anotações internas da OperaIA (plano, piloto, contato) — a construtora não vê */
+  notes: text('notes'),
+  suspendedAt: timestamp('suspended_at', { withTimezone: true }),
   createdAt: createdAt(),
 })
 
@@ -82,6 +89,10 @@ export const users = pgTable(
     email: text('email').notNull().unique(),
     passwordHash: text('password_hash').notNull(),
     role: userRole('role').notNull().default('FINANCEIRO'),
+    active: boolean('active').notNull().default(true),
+    /** Dona(o) da plataforma OperaIA: vê e administra todas as construtoras */
+    isPlatformOwner: boolean('is_platform_owner').notNull().default(false),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('users_company_idx').on(t.companyId)],

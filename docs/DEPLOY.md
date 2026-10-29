@@ -137,6 +137,22 @@ Outros comandos:
 
 Dentro do sistema, o admin da construtora também adiciona pessoas em **Configurações → Equipe**.
 
+### Painel da Plataforma (uma vez só)
+
+Libere o seu usuário como dona da plataforma:
+
+```bash
+... exec app node dist/cli/admin.js dona-plataforma --email seu@email.com
+```
+
+Saia e entre de novo. Aparece o menu **Plataforma**, e dali em diante dá para fazer pelo navegador, sem voltar à VPS:
+
+- criar construtoras;
+- suspender ou reativar;
+- gerenciar pessoas e senhas;
+- trocar a chave de integração;
+- entrar como uma construtora para dar suporte.
+
 ## 8. Backup diário
 
 ```bash

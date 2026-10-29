@@ -17,6 +17,8 @@ const router = createRouter({
     { path: '/inteligencia', name: 'alerts', component: () => import('./views/AlertsView.vue'), meta: { title: 'Inteligência' } },
     { path: '/configuracoes', name: 'settings', component: () => import('./views/SettingsView.vue'), meta: { title: 'Configurações' } },
     { path: '/integracoes', redirect: '/configuracoes' },
+    { path: '/plataforma', name: 'platform', component: () => import('./views/PlatformView.vue'), meta: { title: 'Plataforma', owner: true } },
+    { path: '/plataforma/:id', name: 'platform-company', component: () => import('./views/PlatformCompanyView.vue'), meta: { title: 'Plataforma', owner: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
@@ -31,6 +33,7 @@ router.beforeEach(async (to) => {
     auth.logout()
     return { name: 'login' }
   }
+  if (to.meta.owner && (!auth.isPlatformOwner || auth.impersonating)) return { name: 'dashboard' }
   return true
 })
 

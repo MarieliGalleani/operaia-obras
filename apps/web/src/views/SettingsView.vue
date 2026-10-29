@@ -3,12 +3,17 @@ import { computed, onMounted, ref } from 'vue'
 import { api } from '@/lib/api'
 import { date } from '@/lib/format'
 import { toast, toastError } from '@/lib/toast'
+import { useAuth } from '@/stores/auth'
+
+const auth = useAuth()
 
 interface User {
   id: string
   name: string
   email: string
   role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA'
+  active: boolean
+  lastLoginAt: string | null
   createdAt: string
 }
 const ROLES = [
@@ -28,6 +33,16 @@ async function loadTeam() {
     team.value = await api.get<User[]>('/api/users')
   } catch (e) {
     toastError(e)
+  }
+}
+async function updateMember(id: string, patch: { role?: string; active?: boolean }) {
+  try {
+    await api.patch(`/api/users/${id}`, patch)
+    toast('Acesso atualizado')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    loadTeam()
   }
 }
 async function sendInvite() {
@@ -92,13 +107,40 @@ const planned = [
       <v-btn color="primary" prepend-icon="mdi-account-plus-outline" @click="inviteDialog = true; created = null">Adicionar pessoa</v-btn>
     </div>
     <v-table density="comfortable">
-      <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Desde</th></tr></thead>
+      <thead><tr><th>Pessoa</th><th style="min-width: 215px">Perfil</th><th style="min-width: 150px">Acesso</th><th>Último login</th></tr></thead>
       <tbody>
-        <tr v-for="u in team" :key="u.id">
-          <td class="font-weight-medium">{{ u.name }}</td>
-          <td>{{ u.email }}</td>
-          <td><v-chip variant="tonal" :color="u.role === 'ADMIN' ? 'primary' : undefined">{{ roleTitle(u.role) }}</v-chip></td>
-          <td>{{ date(u.createdAt) }}</td>
+        <tr v-for="u in team" :key="u.id" :style="u.active ? '' : 'opacity:.55'">
+          <td>
+            <div class="font-weight-medium">{{ u.name }}<span v-if="u.id === auth.me?.user.id" class="text-caption muted"> (você)</span></div>
+            <div class="text-caption muted">{{ u.email }}</div>
+          </td>
+          <td>
+            <v-chip v-if="u.id === auth.me?.user.id" variant="tonal" color="primary">{{ roleTitle(u.role) }}</v-chip>
+            <v-select
+              v-else
+              :id="`team-role-${u.id}`"
+              :model-value="u.role"
+              :items="ROLES"
+              item-title="title"
+              item-value="value"
+              density="compact"
+              @update:model-value="(r: string) => updateMember(u.id, { role: r })"
+            />
+          </td>
+          <td>
+            <v-switch
+              :id="`team-active-${u.id}`"
+              :model-value="u.active"
+              :disabled="u.id === auth.me?.user.id"
+              color="success"
+              density="compact"
+              hide-details
+              inset
+              :label="u.active ? 'Ativo' : 'Desativado'"
+              @update:model-value="(v: boolean | null) => updateMember(u.id, { active: !!v })"
+            />
+          </td>
+          <td class="text-no-wrap">{{ u.lastLoginAt ? date(u.lastLoginAt) : 'nunca entrou' }}</td>
         </tr>
       </tbody>
     </v-table>
