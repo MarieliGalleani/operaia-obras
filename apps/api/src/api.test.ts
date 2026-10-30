@@ -455,3 +455,23 @@ describe('fornecedor homologado', () => {
     expect(blocked.json().homologatedAt).toBeNull()
   })
 })
+
+describe('relatórios', () => {
+  it('soma por obra, fornecedor e mês bate com o total, e só vê a própria construtora', async () => {
+    const r = (await api('GET', '/api/reports')).json()
+    expect(r.total).toBeGreaterThan(0)
+    const sum = (xs: { total: number }[]) => xs.reduce((a, x) => a + x.total, 0)
+    expect(sum(r.byProject)).toBe(r.total)
+    expect(sum(r.bySupplier)).toBe(r.total)
+    expect(sum(r.byMonth)).toBe(r.total)
+    expect(r.byProject.every((p: { projectId: string }) => [projectA, projectB].includes(p.projectId))).toBe(true)
+
+    const other = (await api('GET', '/api/reports', undefined, otherToken)).json()
+    expect(other.byProject.some((p: { projectId: string }) => p.projectId === projectA)).toBe(false)
+
+    const csv = await api('GET', '/api/exports/relatorio-fornecedores.csv')
+    expect(csv.headers['content-type']).toContain('text/csv')
+    expect(csv.body.split('\r\n')[0]).toContain('Fornecedor;CNPJ;Categoria principal')
+    expect((await api('GET', '/api/exports/relatorio-xyz.csv')).statusCode).toBe(400)
+  })
+})

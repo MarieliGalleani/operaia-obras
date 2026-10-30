@@ -24,6 +24,7 @@ import { changePassword, createUser } from './services/accounts.js'
 import { registerPlatformRoutes } from './platform.js'
 import { audit } from './services/audit.js'
 import { exportAllocations, exportPayables } from './services/exports.js'
+import { exportReport, getReports } from './services/reports.js'
 import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { getDashboard } from './services/dashboard.js'
 import {
@@ -591,6 +592,21 @@ export async function registerRoutes(app: FastifyInstance) {
       return reply
         .header('Content-Type', 'text/csv; charset=utf-8')
         .header('Content-Disposition', `attachment; filename="contas-a-pagar-${new Date().toISOString().slice(0, 10)}.csv"`)
+        .send(csv)
+    })
+
+    r.get('/api/reports', async (req) => {
+      const q = z.object({ from: ymd.optional(), to: ymd.optional() }).parse(req.query)
+      return getReports(me(req).companyId, q.from, q.to)
+    })
+
+    r.get('/api/exports/relatorio-:kind.csv', async (req, reply) => {
+      const { kind } = z.object({ kind: z.enum(['obras', 'fornecedores', 'meses']) }).parse(req.params)
+      const q = z.object({ from: ymd.optional(), to: ymd.optional() }).parse(req.query)
+      const csv = await exportReport(me(req).companyId, kind, q.from, q.to)
+      return reply
+        .header('Content-Type', 'text/csv; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="relatorio-${kind}-${q.from ?? 'inicio'}-a-${q.to ?? 'hoje'}.csv"`)
         .send(csv)
     })
 

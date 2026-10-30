@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { ymd } from '@/lib/format'
 
 const model = defineModel<{ from: string; to: string }>({ required: true })
+const props = defineProps<{ extended?: boolean }>()
 
 const options = computed(() => {
   const now = new Date()
@@ -17,6 +18,10 @@ const options = computed(() => {
   const q = new Date(now.getFullYear(), now.getMonth() - 2, 1)
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
   list.splice(1, 0, { title: 'Últimos 3 meses', value: `${ymd(q)}|${ymd(end)}` })
+  if (props.extended) {
+    const s6 = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+    list.splice(2, 0, { title: 'Últimos 6 meses', value: `${ymd(s6)}|${ymd(end)}` })
+  }
   return list
 })
 

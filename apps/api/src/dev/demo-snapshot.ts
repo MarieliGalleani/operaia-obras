@@ -28,9 +28,13 @@ const monthRange = (offset: number) => {
 }
 const periods = [0, 1, 2, 3, 4, 5].map(monthRange)
 periods.push({ from: monthRange(2).from, to: monthRange(0).to })
+periods.push({ from: monthRange(5).from, to: monthRange(0).to })
 
 await grab('/api/auth/me')
-for (const p of periods) await grab(`/api/dashboard?from=${p.from}&to=${p.to}`)
+for (const p of periods) {
+  await grab(`/api/dashboard?from=${p.from}&to=${p.to}`)
+  await grab(`/api/reports?from=${p.from}&to=${p.to}`)
+}
 const projects = (await grab('/api/projects')) as { id: string }[]
 for (const p of projects) await grab(`/api/projects/${p.id}`)
 

@@ -23,6 +23,7 @@ const nav = [
   { title: 'Fornecedores', icon: 'mdi-truck-outline', to: '/fornecedores' },
   { title: 'Notas Fiscais', icon: 'mdi-file-document-outline', to: '/notas' },
   { title: 'Contas a Pagar', icon: 'mdi-calendar-check-outline', to: '/contas-a-pagar' },
+  { title: 'Relatórios', icon: 'mdi-chart-box-outline', to: '/relatorios' },
   { title: 'Inteligência', icon: 'mdi-creation-outline', to: '/inteligencia' },
   { title: 'Integrações', icon: 'mdi-puzzle-outline', to: '/integracoes', admin: true },
   { title: 'Configurações', icon: 'mdi-cog-outline', to: '/configuracoes', admin: true },
