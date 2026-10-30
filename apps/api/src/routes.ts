@@ -376,8 +376,19 @@ export async function registerRoutes(app: FastifyInstance) {
       const doc = await db.query.documents.findFirst({ where: and(eq(documents.companyId, me(req).companyId), eq(documents.id, id)) })
       if (!doc?.filePath) throw notFound('Arquivo')
       const isXml = doc.fileName?.toLowerCase().endsWith('.xml')
-      const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf')
-      reply.header('Content-Type', isXml ? 'application/xml' : isPdf ? 'application/pdf' : 'application/octet-stream')
+      const lower = doc.fileName?.toLowerCase() ?? ''
+      const type = isXml
+        ? 'application/xml'
+        : lower.endsWith('.pdf')
+          ? 'application/pdf'
+          : /\.jpe?g$/.test(lower)
+            ? 'image/jpeg'
+            : lower.endsWith('.png')
+              ? 'image/png'
+              : lower.endsWith('.webp')
+                ? 'image/webp'
+                : 'application/octet-stream'
+      reply.header('Content-Type', type)
       reply.header('Content-Disposition', `inline; filename="${(doc.fileName ?? 'documento').replace(/"/g, '')}"`)
       return reply.send(createReadStream(doc.filePath))
     })

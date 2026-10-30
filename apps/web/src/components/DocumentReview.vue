@@ -20,6 +20,7 @@ import { toast, toastError } from '@/lib/toast'
 import type { DocumentDetail } from '@/lib/types'
 import { useAuth } from '@/stores/auth'
 import { useProjects } from '@/stores/projects'
+import DocumentPreview from './DocumentPreview.vue'
 
 const props = defineProps<{ documentId: string | null }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -230,6 +231,9 @@ async function openFile() {
           <v-col cols="12" md="6">
             <v-card class="pa-4 mb-4">
               <div class="card-title mb-3">Dados extraídos</div>
+              <div class="d-flex ga-4 align-start extracted">
+              <DocumentPreview :doc="doc" />
+              <div class="flex-grow-1" style="min-width: 0">
               <template v-if="isManual && editable">
                 <v-alert type="info" variant="tonal" density="compact" class="mb-3">Documento sem XML: preencha os dados abaixo.</v-alert>
                 <v-row dense>
@@ -269,6 +273,8 @@ async function openFile() {
                 <dt v-if="doc.accessKey">Chave</dt>
                 <dd v-if="doc.accessKey" class="text-caption" style="word-break: break-all">{{ doc.accessKey }}</dd>
               </dl>
+              </div>
+              </div>
             </v-card>
 
             <v-card v-if="doc.issues.length" class="pa-4 mb-4">
@@ -421,7 +427,8 @@ async function openFile() {
 <style scoped>
 .facts {
   display: grid;
-  grid-template-columns: 130px 1fr;
+  grid-template-columns: 108px 1fr;
+  column-gap: 8px;
   row-gap: 8px;
   font-size: 0.88rem;
 }
@@ -441,6 +448,9 @@ async function openFile() {
   align-items: center;
 }
 @media (max-width: 600px) {
+  .extracted {
+    flex-direction: column;
+  }
   .alloc-row {
     grid-template-columns: 1fr 1fr;
   }
