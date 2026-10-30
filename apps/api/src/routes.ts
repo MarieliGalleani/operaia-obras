@@ -303,7 +303,7 @@ export async function registerRoutes(app: FastifyInstance) {
     // -------------------------------------------------------- fornecedores
     r.get('/api/suppliers', async (req) => {
       const { companyId } = me(req)
-      const q = z.object({ q: z.string().optional(), category: category.optional() }).parse(req.query)
+      const q = z.object({ q: z.string().optional(), category: category.optional(), status: z.enum(['HOMOLOGADO', 'PENDENTE', 'BLOQUEADO']).optional() }).parse(req.query)
       return db
         .select({
           id: suppliers.id,
@@ -312,6 +312,8 @@ export async function registerRoutes(app: FastifyInstance) {
           tradeName: suppliers.tradeName,
           defaultCategory: suppliers.defaultCategory,
           status: suppliers.status,
+          homologatedAt: suppliers.homologatedAt,
+          homologatedBy: suppliers.homologatedBy,
           email: suppliers.email,
           phone: suppliers.phone,
           documentsCount: sql<number>`(SELECT count(*)::int FROM fiscal_documents d WHERE d.supplier_id = "suppliers"."id" AND d.status = 'APROVADO')`,
@@ -323,6 +325,7 @@ export async function registerRoutes(app: FastifyInstance) {
           and(
             eq(suppliers.companyId, companyId),
             q.category ? eq(suppliers.defaultCategory, q.category) : undefined,
+            q.status ? eq(suppliers.status, q.status) : undefined,
             q.q ? sql`(${suppliers.name} ILIKE ${'%' + q.q + '%'} OR ${suppliers.cnpj} LIKE ${'%' + onlyDigits(q.q) + '%'})` : undefined,
           ),
         )
@@ -344,7 +347,9 @@ export async function registerRoutes(app: FastifyInstance) {
       const body = supplierBody.parse(req.body)
       const cnpj = onlyDigits(body.cnpj)
       if (!isValidCnpj(cnpj)) throw badRequest('CNPJ_INVALIDO', 'CNPJ inválido.')
-      const [s] = await db.insert(suppliers).values({ ...body, cnpj, companyId: u.companyId }).returning()
+      if (body.status && body.status !== 'PENDENTE') requireRole(req, 'ADMIN', 'FINANCEIRO')
+      const homologation = body.status === 'HOMOLOGADO' ? { homologatedAt: new Date(), homologatedBy: u.name } : {}
+      const [s] = await db.insert(suppliers).values({ ...body, ...homologation, cnpj, companyId: u.companyId }).returning()
       await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'supplier', entityId: s.id, action: 'created', data: body })
       return reply.code(201).send(s)
     })
@@ -354,7 +359,16 @@ export async function registerRoutes(app: FastifyInstance) {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const body = supplierBody.omit({ cnpj: true }).partial().parse(req.body)
       if (body.status) requireRole(req, 'ADMIN', 'FINANCEIRO')
-      const [s] = await db.update(suppliers).set(body).where(and(eq(suppliers.companyId, u.companyId), eq(suppliers.id, id))).returning()
+      const current = await db.query.suppliers.findFirst({ where: and(eq(suppliers.companyId, u.companyId), eq(suppliers.id, id)) })
+      if (!current) throw notFound('Fornecedor')
+      // registra quem e quando homologou; sair de homologado limpa o registro
+      const homologation =
+        body.status === 'HOMOLOGADO' && current.status !== 'HOMOLOGADO'
+          ? { homologatedAt: new Date(), homologatedBy: u.name }
+          : body.status && body.status !== 'HOMOLOGADO'
+            ? { homologatedAt: null, homologatedBy: null }
+            : {}
+      const [s] = await db.update(suppliers).set({ ...body, ...homologation }).where(and(eq(suppliers.companyId, u.companyId), eq(suppliers.id, id))).returning()
       if (!s) throw notFound('Fornecedor')
       await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'supplier', entityId: id, action: 'updated', data: body })
       return s

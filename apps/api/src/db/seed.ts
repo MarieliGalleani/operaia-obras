@@ -160,7 +160,10 @@ async function main() {
       name: s.name,
       tradeName: s.trade,
       defaultCategory: s.cat,
-      status: 'HOMOLOGADO',
+      // Supermix ainda não foi homologada: mostra o fluxo de homologar na demonstração
+      status: s === SUPPLIERS.supermix ? 'PENDENTE' : 'HOMOLOGADO',
+      homologatedAt: s === SUPPLIERS.supermix ? null : new Date(Date.now() - 90 * 86400000),
+      homologatedBy: s === SUPPLIERS.supermix ? null : 'Rafael Lima',
       email: `financeiro@${s.trade.toLowerCase().replace(/[^a-z]/g, '')}.com.br`,
     })
   }

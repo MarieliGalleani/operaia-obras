@@ -435,3 +435,23 @@ describe('foto da obra', () => {
     expect((await app.inject({ method: 'GET', url: '/api/media/obras/../../segredo.png' })).statusCode).toBe(404)
   })
 })
+
+describe('fornecedor homologado', () => {
+  it('registra quando e quem homologou e filtra por situação', async () => {
+    const created = await api('POST', '/api/suppliers', { cnpj: cnpjWithDigits(rnd() + '0001'), name: 'Fornecedor Homologação' })
+    expect(created.statusCode).toBe(201)
+    const id = created.json().id
+    expect(created.json().homologatedAt).toBeNull()
+
+    const ok = await api('PATCH', `/api/suppliers/${id}`, { status: 'HOMOLOGADO' })
+    expect(ok.json().homologatedAt).toBeTruthy()
+    expect(ok.json().homologatedBy).toBe('Teste')
+
+    const list = (await api('GET', '/api/suppliers?status=HOMOLOGADO')).json() as { id: string }[]
+    expect(list.some((s) => s.id === id)).toBe(true)
+    expect(((await api('GET', '/api/suppliers?status=PENDENTE')).json() as { id: string }[]).some((s) => s.id === id)).toBe(false)
+
+    const blocked = await api('PATCH', `/api/suppliers/${id}`, { status: 'BLOQUEADO' })
+    expect(blocked.json().homologatedAt).toBeNull()
+  })
+})

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/lib/api'
-import { CATEGORIES, brl, categoryLabel, cnpj, date, type CostCategory } from '@/lib/format'
+import { CATEGORIES, brl, categoryColor, categoryLabel, cnpj, date, type CostCategory } from '@/lib/format'
 import { toast, toastError } from '@/lib/toast'
 import { useAuth } from '@/stores/auth'
 
@@ -12,6 +12,8 @@ interface Supplier {
   tradeName: string | null
   defaultCategory: CostCategory | null
   status: 'HOMOLOGADO' | 'PENDENTE' | 'BLOQUEADO'
+  homologatedAt: string | null
+  homologatedBy: string | null
   email: string | null
   phone: string | null
   documentsCount: number
@@ -27,6 +29,15 @@ const loading = ref(false)
 const editing = ref<Supplier | null>(null)
 const createDialog = ref(false)
 const newForm = ref({ cnpj: '', name: '', defaultCategory: null as CostCategory | null, email: '' })
+const situation = ref<'HOMOLOGADO' | 'PENDENTE' | 'BLOQUEADO' | null>(null)
+const CATEGORY_ICON: Record<string, string> = {
+  MATERIAIS: 'mdi-package-variant-closed',
+  MAO_DE_OBRA: 'mdi-account-hard-hat-outline',
+  TERCEIRIZADOS: 'mdi-handshake-outline',
+  EQUIPAMENTOS: 'mdi-excavator',
+  SERVICOS: 'mdi-wrench-outline',
+  OUTROS: 'mdi-dots-horizontal-circle-outline',
+}
 const STATUS = {
   HOMOLOGADO: { color: 'success', icon: 'mdi-check-decagram', label: 'Homologado' },
   PENDENTE: { color: 'warning', icon: 'mdi-clock-outline', label: 'Pendente' },
@@ -49,7 +60,30 @@ async function load() {
 onMounted(load)
 watch(category, load)
 
-const sorted = computed(() => [...rows.value].sort((a, b) => Number(b.purchasedTotal) - Number(a.purchasedTotal)))
+const counts = computed(() => ({
+  all: rows.value.length,
+  HOMOLOGADO: rows.value.filter((r) => r.status === 'HOMOLOGADO').length,
+  PENDENTE: rows.value.filter((r) => r.status === 'PENDENTE').length,
+  BLOQUEADO: rows.value.filter((r) => r.status === 'BLOQUEADO').length,
+}))
+const sorted = computed(() =>
+  rows.value
+    .filter((r) => !situation.value || r.status === situation.value)
+    .sort((a, b) => Number(b.purchasedTotal) - Number(a.purchasedTotal)),
+)
+const homologating = ref<string | null>(null)
+async function homologate(s: Supplier) {
+  homologating.value = s.id
+  try {
+    await api.patch(`/api/suppliers/${s.id}`, { status: 'HOMOLOGADO' })
+    toast(`${s.tradeName ?? s.name} homologado`)
+    load()
+  } catch (e) {
+    toastError(e)
+  } finally {
+    homologating.value = null
+  }
+}
 
 async function saveEdit() {
   if (!editing.value) return
@@ -80,7 +114,7 @@ async function create() {
   <div class="d-flex align-start justify-space-between flex-wrap ga-4 mb-6">
     <div>
       <div class="page-title">Fornecedores</div>
-      <div class="page-subtitle">Cadastrados automaticamente a partir das notas. Homologue, bloqueie e defina a categoria padrão.</div>
+      <div class="page-subtitle">Cadastrados automaticamente a partir das notas. Homologue quem é confiável, bloqueie quem não é e defina a categoria padrão.</div>
     </div>
     <v-btn color="primary" prepend-icon="mdi-plus" @click="createDialog = true">Novo fornecedor</v-btn>
   </div>
@@ -88,8 +122,15 @@ async function create() {
   <v-card class="pa-4 mb-4">
     <div class="d-flex flex-wrap ga-3 align-center">
       <v-text-field v-model="q" placeholder="Buscar por nome ou CNPJ…" prepend-inner-icon="mdi-magnify" style="max-width: 360px" @keyup.enter="load" />
+      <v-chip-group v-model="situation" color="primary" variant="outlined">
+        <v-chip :value="null" size="default" filter>Todos · {{ counts.all }}</v-chip>
+        <v-chip value="HOMOLOGADO" size="default" filter prepend-icon="mdi-check-decagram">Homologados · {{ counts.HOMOLOGADO }}</v-chip>
+        <v-chip value="PENDENTE" size="default" filter>Pendentes · {{ counts.PENDENTE }}</v-chip>
+        <v-chip v-if="counts.BLOQUEADO" value="BLOQUEADO" size="default" filter>Bloqueados · {{ counts.BLOQUEADO }}</v-chip>
+      </v-chip-group>
+      <v-divider vertical class="mx-1 d-none d-md-block" />
       <v-chip-group v-model="category" color="primary" variant="outlined">
-        <v-chip :value="null" size="default" filter>Todos</v-chip>
+        <v-chip :value="null" size="default" filter>Todas categorias</v-chip>
         <v-chip v-for="c in CATEGORIES.slice(0, 5)" :key="c.value" :value="c.value" size="default" filter>{{ c.title }}</v-chip>
       </v-chip-group>
     </div>
@@ -98,8 +139,11 @@ async function create() {
   <v-row dense>
     <v-col v-for="s in sorted" :key="s.id" cols="12" sm="6" lg="3">
       <v-card class="pa-4 h-100 d-flex flex-column">
-        <div class="d-flex justify-space-between align-start">
-          <div style="min-width: 0">
+        <div class="d-flex justify-space-between align-start ga-3">
+          <v-avatar size="44" :color="s.defaultCategory ? undefined : 'grey-lighten-3'" :style="s.defaultCategory ? { background: categoryColor(s.defaultCategory) + '26' } : {}" rounded="lg">
+            <v-icon :color="s.defaultCategory ? categoryColor(s.defaultCategory) : 'grey'">{{ CATEGORY_ICON[s.defaultCategory ?? 'OUTROS'] }}</v-icon>
+          </v-avatar>
+          <div style="min-width: 0" class="flex-grow-1">
             <div class="font-weight-bold text-truncate">{{ s.tradeName ?? s.name }}</div>
             <div class="text-caption muted text-truncate">{{ s.name }}</div>
             <div class="text-caption muted">{{ cnpj(s.cnpj) }}</div>
@@ -107,10 +151,28 @@ async function create() {
           <v-btn icon="mdi-pencil-outline" size="small" variant="text" @click="editing = { ...s }" />
         </div>
         <div class="d-flex ga-1 my-3 flex-wrap">
-          <v-chip :color="STATUS[s.status].color" variant="tonal" :prepend-icon="STATUS[s.status].icon">{{ STATUS[s.status].label }}</v-chip>
+          <v-tooltip v-if="s.status === 'HOMOLOGADO' && s.homologatedAt" location="top">
+            <template #activator="{ props }">
+              <v-chip v-bind="props" :color="STATUS[s.status].color" variant="tonal" :prepend-icon="STATUS[s.status].icon">{{ STATUS[s.status].label }}</v-chip>
+            </template>
+            Homologado em {{ date(s.homologatedAt) }}{{ s.homologatedBy ? ` por ${s.homologatedBy}` : '' }}
+          </v-tooltip>
+          <v-chip v-else :color="STATUS[s.status].color" variant="tonal" :prepend-icon="STATUS[s.status].icon">{{ STATUS[s.status].label }}</v-chip>
           <v-chip v-if="s.defaultCategory" variant="tonal">{{ categoryLabel(s.defaultCategory) }}</v-chip>
         </div>
         <v-spacer />
+        <v-btn
+          v-if="s.status === 'PENDENTE' && auth.canApprove"
+          variant="tonal"
+          color="success"
+          size="small"
+          prepend-icon="mdi-check-decagram"
+          class="mb-3 align-self-start"
+          :loading="homologating === s.id"
+          @click="homologate(s)"
+        >
+          Homologar
+        </v-btn>
         <div class="d-flex justify-space-between align-end">
           <div>
             <div class="text-caption muted">Comprado (aprovado)</div>

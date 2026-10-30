@@ -144,6 +144,8 @@ export const suppliers = pgTable(
     tradeName: text('trade_name'),
     defaultCategory: costCategory('default_category'),
     status: supplierStatus('status').notNull().default('PENDENTE'),
+    homologatedAt: timestamp('homologated_at', { withTimezone: true }),
+    homologatedBy: text('homologated_by'),
     email: text('email'),
     phone: text('phone'),
     createdAt: createdAt(),

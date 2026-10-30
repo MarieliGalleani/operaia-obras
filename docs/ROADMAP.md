@@ -7,10 +7,10 @@ Alinhado ao plano de validação de 120 dias. Cada item serve para responder se 
 Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 
 ### Fácil (horas a 1 dia)
-- [ ] 1. Menu igual ao da imagem: Integrações separada de Configurações
-- [ ] 2. Foto de capa da obra nos cards (no lugar das iniciais)
-- [ ] 3. Miniatura da nota (PDF/DANFE) ao lado dos dados na conferência
-- [ ] 4. Fornecedor "homologado" com selo na lista
+- [x] 1. Menu igual ao da imagem: Integrações separada de Configurações
+- [x] 2. Foto de capa da obra nos cards (no lugar das iniciais)
+- [x] 3. Miniatura da nota (PDF/DANFE) ao lado dos dados na conferência
+- [x] 4. Fornecedor "homologado" com selo na lista
 
 ### Médio (2 a 5 dias)
 - [ ] 5. Tela de Orçamentos: previsto × realizado por categoria, todas as obras
