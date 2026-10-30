@@ -1,4 +1,7 @@
 import { createReadStream } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import bcrypt from 'bcryptjs'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
@@ -56,6 +59,24 @@ async function readUpload(req: FastifyRequest) {
   return files
 }
 
+const STORAGE_DIR = process.env.STORAGE_DIR ?? './storage'
+const MEDIA_DIR = path.join(STORAGE_DIR, 'media', 'obras')
+const MEDIA_PREFIX = '/api/media/obras/'
+const MEDIA_FILE = /^[a-f0-9]{32}\.(jpg|png|webp)$/
+
+/** Tipo da imagem pelo conteúdo (não confia na extensão enviada). */
+export function imageKind(b: Buffer): 'jpg' | 'png' | 'webp' | null {
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg'
+  if (b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png'
+  if (b.length > 12 && b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return 'webp'
+  return null
+}
+async function removeOwnMedia(url: string | null | undefined) {
+  if (!url?.startsWith(MEDIA_PREFIX)) return
+  const file = url.slice(MEDIA_PREFIX.length).split('?')[0]
+  if (MEDIA_FILE.test(file)) await unlink(path.join(MEDIA_DIR, file)).catch(() => {})
+}
+
 function looksLikeXml(name: string, content: Buffer) {
   return name.toLowerCase().endsWith('.xml') || content.subarray(0, 200).toString('utf8').trimStart().startsWith('<')
 }
@@ -111,6 +132,22 @@ export async function registerRoutes(app: FastifyInstance) {
     return { results }
   })
 
+  // ------------------------------------------- fotos das obras (sem login)
+  // Nome aleatório de 128 bits: só quem recebeu a URL pelo sistema encontra o arquivo.
+  app.get('/api/media/obras/:file', async (req, reply) => {
+    const { file } = z.object({ file: z.string() }).parse(req.params)
+    if (!MEDIA_FILE.test(file)) throw notFound('Imagem')
+    const full = path.join(MEDIA_DIR, file)
+    const type = file.endsWith('.png') ? 'image/png' : file.endsWith('.webp') ? 'image/webp' : 'image/jpeg'
+    try {
+      const stream = createReadStream(full)
+      await new Promise((ok, fail) => stream.once('open', ok).once('error', fail))
+      return reply.type(type).header('cache-control', 'public, max-age=31536000, immutable').send(stream)
+    } catch {
+      throw notFound('Imagem')
+    }
+  })
+
   // ---------------------------------------------------------- protegido
   await app.register(async (r) => {
     r.addHook('onRequest', app.authenticate)
@@ -164,7 +201,11 @@ export async function registerRoutes(app: FastifyInstance) {
       startDate: ymd.optional().nullable(),
       endDate: ymd.optional().nullable(),
       budgetTotal: cents.nonnegative(),
-      imageUrl: z.string().url().optional().nullable(),
+      imageUrl: z
+        .string()
+        .refine((v) => /^https:\/\//.test(v) || (v.startsWith(MEDIA_PREFIX) && MEDIA_FILE.test(v.slice(MEDIA_PREFIX.length))), 'URL de imagem inválida')
+        .optional()
+        .nullable(),
       budgets: z.array(z.object({ category, amount: cents.nonnegative() })).optional(),
     })
 
@@ -222,6 +263,41 @@ export async function registerRoutes(app: FastifyInstance) {
         await audit(tx, { companyId: u.companyId, userId: u.sub, entity: 'project', entityId: id, action: 'updated', data: body })
         return p
       })
+    })
+
+    r.post('/api/projects/:id/image', async (req) => {
+      const u = me(req)
+      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      const project = await db.query.projects.findFirst({ where: and(eq(projects.companyId, u.companyId), eq(projects.id, id)) })
+      if (!project) throw notFound('Obra')
+      if (!req.isMultipart()) throw badRequest('SEM_ARQUIVO', 'Envie a foto da obra.')
+      const part = await req.file()
+      if (!part) throw badRequest('SEM_ARQUIVO', 'Envie a foto da obra.')
+      const content = await part.toBuffer()
+      if (content.length > 5 * 1024 * 1024) throw badRequest('IMAGEM_GRANDE', 'A foto pode ter no máximo 5 MB.')
+      const kind = imageKind(content)
+      if (!kind) throw badRequest('IMAGEM_INVALIDA', 'Envie uma foto em JPG, PNG ou WEBP.')
+      await mkdir(MEDIA_DIR, { recursive: true })
+      const file = `${randomBytes(16).toString('hex')}.${kind}`
+      await writeFile(path.join(MEDIA_DIR, file), content)
+      const imageUrl = MEDIA_PREFIX + file
+      await db.update(projects).set({ imageUrl }).where(eq(projects.id, id))
+      await removeOwnMedia(project.imageUrl)
+      await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'project', entityId: id, action: 'image_updated', data: { imageUrl } })
+      return { imageUrl }
+    })
+
+    r.delete('/api/projects/:id/image', async (req) => {
+      const u = me(req)
+      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      const project = await db.query.projects.findFirst({ where: and(eq(projects.companyId, u.companyId), eq(projects.id, id)) })
+      if (!project) throw notFound('Obra')
+      await db.update(projects).set({ imageUrl: null }).where(eq(projects.id, id))
+      await removeOwnMedia(project.imageUrl)
+      await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'project', entityId: id, action: 'image_removed', data: {} })
+      return { imageUrl: null }
     })
 
     // -------------------------------------------------------- fornecedores

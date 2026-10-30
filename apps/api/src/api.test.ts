@@ -399,3 +399,39 @@ describe('e-mail de notas (IMAP real em memória)', () => {
     expect((await api('DELETE', '/api/mail-inbox')).json().inbox).toBeNull()
   })
 })
+
+describe('foto da obra', () => {
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+  function sendImage(content: Buffer, project = projectA, auth = token) {
+    const boundary = '----operaia' + rnd()
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="foto.png"\r\nContent-Type: image/png\r\n\r\n`),
+      content,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ])
+    return app.inject({ method: 'POST', url: `/api/projects/${project}/image`, headers: { authorization: `Bearer ${auth}`, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body })
+  }
+
+  it('envia, serve sem login, troca e remove', async () => {
+    const res = await sendImage(png)
+    expect(res.statusCode).toBe(200)
+    const url = res.json().imageUrl as string
+    expect(url).toMatch(/^\/api\/media\/obras\/[a-f0-9]{32}\.png$/)
+    const served = await app.inject({ method: 'GET', url })
+    expect(served.statusCode).toBe(200)
+    expect(served.headers['content-type']).toContain('image/png')
+
+    const again = await sendImage(png)
+    expect(again.json().imageUrl).not.toBe(url)
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(404) // a antiga é apagada
+
+    const del = await app.inject({ method: 'DELETE', url: `/api/projects/${projectA}/image`, headers: { authorization: `Bearer ${token}` } })
+    expect(del.json().imageUrl).toBeNull()
+  })
+
+  it('recusa arquivo que não é imagem e obra de outra construtora', async () => {
+    expect((await sendImage(Buffer.from('<svg onload="x"/>'))).json().code).toBe('IMAGEM_INVALIDA')
+    expect((await sendImage(png, projectA, otherToken)).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: '/api/media/obras/../../segredo.png' })).statusCode).toBe(404)
+  })
+})

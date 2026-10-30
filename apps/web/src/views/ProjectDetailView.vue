@@ -8,7 +8,8 @@ import ProjectThumb from '@/components/ProjectThumb.vue'
 import StackBar from '@/components/StackBar.vue'
 import { api } from '@/lib/api'
 import { CATEGORIES, DOC_STATUS, PAYABLE_STATUS, brl, categoryColor, date, pct } from '@/lib/format'
-import { toastError } from '@/lib/toast'
+import { toast, toastError } from '@/lib/toast'
+import { useAuth } from '@/stores/auth'
 
 interface Detail {
   id: string
@@ -45,6 +46,38 @@ const categories = computed(() => {
   const by = data.value?.financials.byCategory ?? {}
   return CATEGORIES.map((c) => ({ ...c, budget: by[c.value]?.budget ?? 0, appropriated: by[c.value]?.appropriated ?? 0 })).filter((c) => c.budget || c.appropriated)
 })
+const auth = useAuth()
+const canEdit = computed(() => ['ADMIN', 'GESTOR_OBRA'].includes(auth.me?.user.role ?? ''))
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+async function onPhoto(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  ;(e.target as HTMLInputElement).value = ''
+  if (!file || !data.value) return
+  if (file.size > 5 * 1024 * 1024) return toast('A foto pode ter no máximo 5 MB.', 'warning')
+  uploading.value = true
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await api.post<{ imageUrl: string }>(`/api/projects/${data.value.id}/image`, form)
+    data.value.imageUrl = res.imageUrl
+    toast('Foto da obra atualizada')
+  } catch (err) {
+    toastError(err)
+  } finally {
+    uploading.value = false
+  }
+}
+async function removePhoto() {
+  if (!data.value) return
+  try {
+    await api.request('DELETE', `/api/projects/${data.value.id}/image`)
+    data.value.imageUrl = null
+    toast('Foto removida')
+  } catch (err) {
+    toastError(err)
+  }
+}
 const balance = computed(() => (data.value ? data.value.budgetTotal - data.value.financials.paid - data.value.financials.open : 0))
 </script>
 
@@ -53,7 +86,19 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
   <template v-else>
     <div class="d-flex align-center ga-4 mb-6 flex-wrap">
       <v-btn icon="mdi-arrow-left" variant="text" to="/obras" />
-      <ProjectThumb :name="data.name" :image-url="data.imageUrl" :size="72" />
+      <div class="photo-wrap">
+        <ProjectThumb :name="data.name" :image-url="data.imageUrl" :size="120" />
+        <v-menu v-if="canEdit">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" class="photo-btn" size="x-small" icon="mdi-camera-outline" color="surface" :loading="uploading" aria-label="Foto da obra" />
+          </template>
+          <v-list density="compact">
+            <v-list-item prepend-icon="mdi-image-plus-outline" :title="data.imageUrl ? 'Trocar foto' : 'Adicionar foto'" @click="fileInput?.click()" />
+            <v-list-item v-if="data.imageUrl" prepend-icon="mdi-delete-outline" title="Remover foto" @click="removePhoto" />
+          </v-list>
+        </v-menu>
+        <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="onPhoto" />
+      </div>
       <div>
         <div class="text-caption muted">{{ data.code }} · {{ data.status === 'ATIVA' ? 'Em andamento' : data.status }}</div>
         <div class="page-title">{{ data.name }}</div>
@@ -140,3 +185,14 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
     <DocumentReview :document-id="openDoc" @close="openDoc = null" @changed="load" />
   </template>
 </template>
+
+<style scoped>
+.photo-wrap {
+  position: relative;
+}
+.photo-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+}
+</style>
