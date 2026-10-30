@@ -46,6 +46,8 @@ for (const s of ['ABERTO,PARCIAL', 'PAGO', 'ABERTO,PARCIAL,PAGO,CANCELADO']) {
 await grab('/api/suppliers?')
 await grab('/api/alerts?status=ABERTO')
 await grab('/api/alerts?status=RESOLVIDO,IGNORADO')
+await grab('/api/mail-inbox')
+await grab('/api/users')
 data['/api/integrations'] = { apiKey: 'oo_demo_chave_ficticia_0000', nfeEndpoint: '/api/integrations/nfe' }
 
 const out = new URL('../../../web/demo/', import.meta.url)

@@ -13,7 +13,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - [x] 4. Fornecedor "homologado" com selo na lista
 
 ### Médio (2 a 5 dias)
-- [ ] 5. Tela de Orçamentos: previsto × realizado por categoria, todas as obras
+- [x] 5. Tela de Orçamentos: previsto × realizado por categoria, todas as obras
 - [ ] 6. Tela de Relatórios: custo por obra, por fornecedor e por mês (PDF/planilha)
 - [ ] 7. Último preço, média por material e prazo do fornecedor nos cards
 - [ ] 8. Alertas críticos por WhatsApp (depende de serviço de envio)

@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue'), meta: { title: 'Visão Geral' } },
     { path: '/obras', name: 'projects', component: () => import('./views/ProjectsView.vue'), meta: { title: 'Obras' } },
     { path: '/obras/:id', name: 'project', component: () => import('./views/ProjectDetailView.vue'), meta: { title: 'Obra' } },
+    { path: '/orcamentos', name: 'budgets', component: () => import('./views/BudgetsView.vue'), meta: { title: 'Orçamentos' } },
     { path: '/notas', name: 'documents', component: () => import('./views/DocumentsView.vue'), meta: { title: 'Notas Fiscais' } },
     { path: '/contas-a-pagar', name: 'payables', component: () => import('./views/PayablesView.vue'), meta: { title: 'Contas a Pagar' } },
     { path: '/fornecedores', name: 'suppliers', component: () => import('./views/SuppliersView.vue'), meta: { title: 'Fornecedores' } },
