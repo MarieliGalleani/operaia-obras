@@ -25,6 +25,7 @@ import { registerPlatformRoutes } from './platform.js'
 import { audit } from './services/audit.js'
 import { exportAllocations, exportPayables } from './services/exports.js'
 import { exportReport, getReports } from './services/reports.js'
+import { getSupplierPriceSummaries, getSupplierPrices } from './services/prices.js'
 import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { getDashboard } from './services/dashboard.js'
 import {
@@ -305,7 +306,8 @@ export async function registerRoutes(app: FastifyInstance) {
     r.get('/api/suppliers', async (req) => {
       const { companyId } = me(req)
       const q = z.object({ q: z.string().optional(), category: category.optional(), status: z.enum(['HOMOLOGADO', 'PENDENTE', 'BLOQUEADO']).optional() }).parse(req.query)
-      return db
+      const summaries = await getSupplierPriceSummaries(companyId)
+      const list = await db
         .select({
           id: suppliers.id,
           cnpj: suppliers.cnpj,
@@ -331,6 +333,15 @@ export async function registerRoutes(app: FastifyInstance) {
           ),
         )
         .orderBy(suppliers.name)
+      return list.map((s) => ({ ...s, ...(summaries.get(s.id) ?? { avgPaymentTermDays: null, materials: 0, topItem: null }) }))
+    })
+
+    r.get('/api/suppliers/:id/prices', async (req) => {
+      const { companyId } = me(req)
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      const supplier = await db.query.suppliers.findFirst({ where: and(eq(suppliers.companyId, companyId), eq(suppliers.id, id)) })
+      if (!supplier) throw notFound('Fornecedor')
+      return getSupplierPrices(companyId, id)
     })
 
     const supplierBody = z.object({

@@ -47,7 +47,8 @@ for (const s of ['ABERTO,PARCIAL', 'PAGO', 'ABERTO,PARCIAL,PAGO,CANCELADO']) {
   await grab(`/api/payables?status=${s}`)
   for (const p of projects) await grab(`/api/payables?status=${s}&projectId=${p.id}`)
 }
-await grab('/api/suppliers?')
+const sups = (await grab('/api/suppliers?')) as { id: string }[]
+for (const s of sups) await grab(`/api/suppliers/${s.id}/prices`)
 await grab('/api/alerts?status=ABERTO')
 await grab('/api/alerts?status=RESOLVIDO,IGNORADO')
 await grab('/api/mail-inbox')

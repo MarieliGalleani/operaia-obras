@@ -475,3 +475,21 @@ describe('relatórios', () => {
     expect((await api('GET', '/api/exports/relatorio-xyz.csv')).statusCode).toBe(400)
   })
 })
+
+describe('preços do fornecedor', () => {
+  it('mostra último preço, média e prazo de pagamento só da própria construtora', async () => {
+    const list = (await api('GET', '/api/suppliers?')).json() as { id: string; topItem: unknown; avgPaymentTermDays: number | null; documentsCount: number }[]
+    const withNotes = list.find((s) => s.documentsCount > 0)
+    expect(withNotes).toBeTruthy()
+    expect(withNotes!.topItem).toBeTruthy()
+    expect(withNotes!.avgPaymentTermDays).not.toBeNull()
+
+    const prices = (await api('GET', `/api/suppliers/${withNotes!.id}/prices`)).json()
+    expect(prices.materials.length).toBeGreaterThan(0)
+    const m = prices.materials[0]
+    expect(m.lastPrice).toBeGreaterThan(0)
+    expect(m.purchases).toBeGreaterThan(0)
+
+    expect((await api('GET', `/api/suppliers/${withNotes!.id}/prices`, undefined, otherToken)).statusCode).toBe(404)
+  })
+})
