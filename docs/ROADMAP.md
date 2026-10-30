@@ -16,8 +16,8 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - [x] 5. Tela de Orçamentos: previsto × realizado por categoria, todas as obras
 - [x] 6. Tela de Relatórios: custo por obra, por fornecedor e por mês (PDF/planilha)
 - [x] 7. Último preço, média por material e prazo de pagamento do fornecedor (prazo de entrega vem com Compras)
-- [ ] 8. Alertas críticos por WhatsApp (depende de serviço de envio)
-- [ ] 9. Cópia das notas aprovadas no Google Drive da construtora
+- [ ] 8. Alertas críticos por WhatsApp (depende de serviço de envio) — ⏸ pulado em 30/10: lembrar a Marieli de escolher o serviço
+- [ ] 9. Cópia das notas aprovadas no Google Drive da construtora — ⏸ pulado em 30/10: lembrar a Marieli de criar o projeto no Google Cloud
 
 ### Difícil (1 a 3 semanas)
 - [ ] 10. Leitura de nota em PDF ou foto (IA sugere, humano confirma)
