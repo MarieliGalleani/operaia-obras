@@ -16,7 +16,7 @@ const router = createRouter({
     { path: '/fornecedores', name: 'suppliers', component: () => import('./views/SuppliersView.vue'), meta: { title: 'Fornecedores' } },
     { path: '/inteligencia', name: 'alerts', component: () => import('./views/AlertsView.vue'), meta: { title: 'Inteligência' } },
     { path: '/configuracoes', name: 'settings', component: () => import('./views/SettingsView.vue'), meta: { title: 'Configurações' } },
-    { path: '/integracoes', redirect: '/configuracoes' },
+    { path: '/integracoes', name: 'integrations', component: () => import('./views/IntegrationsView.vue'), meta: { title: 'Integrações' } },
     { path: '/plataforma', name: 'platform', component: () => import('./views/PlatformView.vue'), meta: { title: 'Plataforma', owner: true } },
     { path: '/plataforma/:id', name: 'platform-company', component: () => import('./views/PlatformCompanyView.vue'), meta: { title: 'Plataforma', owner: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },

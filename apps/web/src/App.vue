@@ -19,10 +19,11 @@ const search = ref('')
 const nav = [
   { title: 'Visão Geral', icon: 'mdi-home-outline', to: '/' },
   { title: 'Obras', icon: 'mdi-office-building-outline', to: '/obras' },
+  { title: 'Fornecedores', icon: 'mdi-truck-outline', to: '/fornecedores' },
   { title: 'Notas Fiscais', icon: 'mdi-file-document-outline', to: '/notas' },
   { title: 'Contas a Pagar', icon: 'mdi-calendar-check-outline', to: '/contas-a-pagar' },
-  { title: 'Fornecedores', icon: 'mdi-truck-outline', to: '/fornecedores' },
   { title: 'Inteligência', icon: 'mdi-creation-outline', to: '/inteligencia' },
+  { title: 'Integrações', icon: 'mdi-puzzle-outline', to: '/integracoes', admin: true },
   { title: 'Configurações', icon: 'mdi-cog-outline', to: '/configuracoes', admin: true },
 ]
 const visibleNav = computed(() => {
