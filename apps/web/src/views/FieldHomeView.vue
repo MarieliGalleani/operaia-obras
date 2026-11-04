@@ -33,6 +33,8 @@ async function load() {
     const r = await cachedGet<FieldProjectRow[]>('/api/field/projects')
     rows.value = r.data
     offlineAt.value = r.offline ? r.at : null
+    // com sinal: guarda já os dados de cada obra, para o celular estar em dia se o sinal cair no canteiro
+    if (!r.offline) for (const p of r.data) cachedGet(`/api/field/projects/${p.id}`).catch(() => {})
   } catch (e) {
     toastError(e)
   } finally {

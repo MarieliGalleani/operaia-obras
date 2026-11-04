@@ -3,7 +3,7 @@
  * App de obra: tudo o que o mestre faz numa obra, em uma tela de celular.
  * Pedir material · Receber entrega · Foto · Ocorrência · Avanço físico. Sem valores em dinheiro.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { date, ymd } from '@/lib/format'
@@ -78,7 +78,21 @@ async function load() {
     if (!data.value) router.replace('/campo')
   }
 }
-onMounted(load)
+// com sinal, mantém os dados em dia (pedido novo aprovado no escritório aparece sem o mestre precisar sair da tela)
+const anyDialog = () => reqOpen.value || recOpen.value || photoOpen.value || occOpen.value || stageOpen.value || !!resolving.value
+function refreshIfIdle() {
+  if (document.visibilityState === 'visible' && navigator.onLine && !anyDialog()) void load()
+}
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  load()
+  refreshTimer = setInterval(refreshIfIdle, 60_000)
+  document.addEventListener('visibilitychange', refreshIfIdle)
+})
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  document.removeEventListener('visibilitychange', refreshIfIdle)
+})
 // a fila enviou registros: recarrega para mostrar o que o servidor gravou
 watch(() => queue.lastSyncAt, () => load())
 
@@ -189,6 +203,9 @@ function chooseOrder(o: FieldData['deliveries'][number]) {
   recOrder.value = o
   recQty.value = Object.fromEntries(o.items.map((i) => [i.id, String(i.remainingQty)]))
 }
+/** quantidade informada acima do que falta chegar (com 2% de folga) */
+const overQty = (i: { id: string; remainingQty: number }) => num(recQty.value[i.id] ?? 0) > i.remainingQty * 1.02 + 0.0001
+const anyOver = computed(() => (recOrder.value?.items ?? []).some(overQty))
 async function sendReceive() {
   if (!recOrder.value) return
   busy.value = true
@@ -578,7 +595,16 @@ const ACTIONS = computed(() => [
             <div class="text-caption muted mb-3">Confira e corrija a quantidade que chegou de verdade.</div>
             <div v-for="i in recOrder.items" :key="i.id" class="mb-2">
               <div class="text-body-2 font-weight-medium">{{ i.description }}</div>
-              <v-text-field v-model="recQty[i.id]" :suffix="i.unit ?? ''" inputmode="decimal" density="comfortable" :hint="`Faltavam ${qty(i.remainingQty)} ${i.unit ?? ''}`" persistent-hint />
+              <v-text-field
+                v-model="recQty[i.id]"
+                :suffix="i.unit ?? ''"
+                inputmode="decimal"
+                density="comfortable"
+                :hint="overQty(i) ? `Mais do que o pedido: faltavam só ${qty(i.remainingQty)} ${i.unit ?? ''}. Confira se é a entrega certa.` : `Faltavam ${qty(i.remainingQty)} ${i.unit ?? ''}`"
+                :color="overQty(i) ? 'error' : undefined"
+                :class="{ 'over-qty': overQty(i) }"
+                persistent-hint
+              />
             </div>
             <v-switch v-model="recProblem" color="warning" label="Chegou com problema (avaria, faltou, errado)" inset hide-details class="my-2" />
             <v-textarea v-model="recNotes" :label="recProblem ? 'O que aconteceu? (obrigatório)' : 'Observação (opcional)'" rows="2" auto-grow />
@@ -588,7 +614,7 @@ const ACTIONS = computed(() => [
             </div>
           </template>
         </v-card-text>
-        <div v-if="recOrder" class="pa-4"><v-btn block size="large" :color="recProblem ? 'warning' : 'info'" :loading="busy" :disabled="recProblem && !recNotes.trim()" @click="sendReceive">Confirmar recebimento</v-btn></div>
+        <div v-if="recOrder" class="pa-4"><v-btn block size="large" :color="recProblem || anyOver ? 'warning' : 'info'" :loading="busy" :disabled="recProblem && !recNotes.trim()" @click="sendReceive">{{ anyOver ? 'Confirmar mesmo acima do pedido' : 'Confirmar recebimento' }}</v-btn></div>
       </v-card>
     </v-dialog>
 
@@ -670,6 +696,10 @@ const ACTIONS = computed(() => [
 <style scoped>
 .field-wrap {
   max-width: 760px;
+}
+.over-qty :deep(.v-messages__message) {
+  color: rgb(var(--v-theme-error));
+  font-weight: 600;
 }
 .queue-card {
   border-left: 4px solid rgb(var(--v-theme-info));
