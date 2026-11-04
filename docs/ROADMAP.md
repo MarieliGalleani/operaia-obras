@@ -22,7 +22,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 ### Difícil (1 a 3 semanas)
 - [ ] 10. Leitura de nota em PDF ou foto (IA sugere, humano confirma)
 - [x] 11. Tela de Compras: pedido antes da nota e conferência pedido × nota (vínculo pelo nº do pedido na nota, divergência de preço/quantidade, entrega parcial, pontualidade do fornecedor)
-- [ ] 12. App de obra do mestre: pedir material, aprovar entrega, fotos, ocorrências, avanço físico
+- [x] 12. App de obra do mestre: pedir material, aprovar entrega, fotos, ocorrências, avanço físico (perfil Mestre de obra, tela de celular em /campo, físico × financeiro na obra)
 - [ ] 13. Funcionar sem internet (junto com o app de obra)
 
 ### Muito difícil / depende de terceiros
@@ -54,4 +54,8 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - Drizzle ORM no lugar de Prisma (sem engine binária; migrations SQL versionadas).
 - Aprovação de nota e pagamento continuam só online, mesmo quando houver modo sem internet.
 - Nota sem pedido de compra pode ser aprovada, com o aviso "sem pedido" (construtora pequena ainda compra sem pedido formal).
+- Perfil Mestre de obra só acessa o app de obra e nunca vê valores em dinheiro (bloqueado na API, não só na tela).
+- Recebimento na obra é registro separado da nota: a conferência passa a ser pedido × nota × o que chegou no canteiro.
+- Ocorrência de gravidade alta vira alerta crítico; média vira alerta de atenção; baixa fica só no diário.
+- Fotos do canteiro são reduzidas no celular (máx. 1600 px, JPEG) antes de enviar.
 - Nota só é vinculada sozinha ao pedido quando traz o número dele (xPed, ex.: PC-0012). Sem número, o sistema apenas sugere o pedido.

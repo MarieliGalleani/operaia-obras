@@ -3,7 +3,7 @@ import { api, getToken, setToken } from '@/lib/api'
 import { DEMO } from '@/lib/demo'
 
 interface Me {
-  user: { id: string; name: string; email: string; role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA'; isPlatformOwner?: boolean }
+  user: { id: string; name: string; email: string; role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'; isPlatformOwner?: boolean }
   company: { id: string; name: string; cnpj: string; status?: string }
   impersonating?: boolean
 }
@@ -21,6 +21,7 @@ export const useAuth = defineStore('auth', {
         .toUpperCase(),
     canApprove: (s) => ['ADMIN', 'FINANCEIRO'].includes(s.me?.user.role ?? ''),
     isPlatformOwner: (s) => !!s.me?.user.isPlatformOwner,
+    isMestre: (s) => s.me?.user.role === 'MESTRE',
     impersonating: (s) => !!s.me?.impersonating,
   },
   actions: {

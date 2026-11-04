@@ -21,7 +21,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
-export const userRole = pgEnum('user_role', ['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA'])
+export const userRole = pgEnum('user_role', ['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE'])
 export const projectStatus = pgEnum('project_status', ['ATIVA', 'PAUSADA', 'CONCLUIDA'])
 export const costCategory = pgEnum('cost_category', [
   'MATERIAIS',
@@ -57,6 +57,7 @@ export const alertType = pgEnum('alert_type', [
   'VENCIMENTO',
   'ECONOMIA',
   'PEDIDO',
+  'OCORRENCIA',
 ])
 /**
  * RASCUNHO – montando o pedido, ainda não foi para o fornecedor
@@ -371,6 +372,154 @@ export const purchaseOrderItems = pgTable(
     total: money('total').notNull(),
   },
   (t) => [index('purchase_order_items_order_idx').on(t.orderId)],
+)
+
+// ------------------------------------------------------------------ campo (app de obra)
+export const materialRequestStatus = pgEnum('material_request_status', ['ABERTA', 'EM_COMPRA', 'RECUSADA'])
+export const occurrenceType = pgEnum('occurrence_type', ['FALTA_MATERIAL', 'ATRASO', 'SEGURANCA', 'QUALIDADE', 'CLIMA', 'ENTREGA', 'OUTRO'])
+export const occurrenceSeverity = pgEnum('occurrence_severity', ['BAIXA', 'MEDIA', 'ALTA'])
+export const occurrenceStatus = pgEnum('occurrence_status', ['ABERTA', 'RESOLVIDA'])
+
+export type FieldItem = { description: string; unit: string | null; quantity: number }
+
+/** Pedido de material feito pelo mestre na obra; o escritório transforma em pedido de compra. */
+export const materialRequests = pgTable(
+  'material_requests',
+  {
+    id: id(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    status: materialRequestStatus('status').notNull().default('ABERTA'),
+    items: jsonb('items').$type<FieldItem[]>().notNull(),
+    neededBy: timestamp('needed_by', { withTimezone: true }),
+    urgent: boolean('urgent').notNull().default(false),
+    notes: text('notes'),
+    orderId: uuid('order_id').references(() => purchaseOrders.id, { onDelete: 'set null' }),
+    declineReason: text('decline_reason'),
+    createdById: uuid('created_by_id'),
+    createdByName: text('created_by_name'),
+    handledByName: text('handled_by_name'),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('material_requests_company_status_idx').on(t.companyId, t.status), index('material_requests_project_idx').on(t.projectId)],
+)
+
+/** Recebimento conferido na obra (o que chegou de fato no canteiro). */
+export const deliveryReceipts = pgTable(
+  'delivery_receipts',
+  {
+    id: id(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    items: jsonb('items').$type<Array<FieldItem & { orderItemId: string }>>().notNull(),
+    /** chegou com problema (avaria, faltou, material errado): abre ocorrência */
+    problem: boolean('problem').notNull().default(false),
+    notes: text('notes'),
+    receivedById: uuid('received_by_id'),
+    receivedByName: text('received_by_name'),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('delivery_receipts_order_idx').on(t.orderId), index('delivery_receipts_project_idx').on(t.projectId)],
+)
+
+export const occurrences = pgTable(
+  'occurrences',
+  {
+    id: id(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    type: occurrenceType('type').notNull(),
+    severity: occurrenceSeverity('severity').notNull().default('MEDIA'),
+    status: occurrenceStatus('status').notNull().default('ABERTA'),
+    title: text('title').notNull(),
+    description: text('description'),
+    receiptId: uuid('receipt_id').references(() => deliveryReceipts.id, { onDelete: 'set null' }),
+    createdById: uuid('created_by_id'),
+    createdByName: text('created_by_name'),
+    resolution: text('resolution'),
+    resolvedByName: text('resolved_by_name'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('occurrences_project_idx').on(t.projectId), index('occurrences_company_status_idx').on(t.companyId, t.status)],
+)
+
+/** Etapas da obra com peso e % concluído (avanço físico). */
+export const projectStages = pgTable(
+  'project_stages',
+  {
+    id: id(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** peso da etapa no avanço total (ex.: % do orçamento que ela representa) */
+    weight: integer('weight').notNull().default(1),
+    progress: integer('progress').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+    updatedByName: text('updated_by_name'),
+  },
+  (t) => [index('project_stages_project_idx').on(t.projectId)],
+)
+
+export const stageUpdates = pgTable(
+  'stage_updates',
+  {
+    id: id(),
+    stageId: uuid('stage_id')
+      .notNull()
+      .references(() => projectStages.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    fromProgress: integer('from_progress').notNull(),
+    progress: integer('progress').notNull(),
+    note: text('note'),
+    userId: uuid('user_id'),
+    userName: text('user_name'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('stage_updates_project_idx').on(t.projectId)],
+)
+
+/** Fotos da obra: diário, ocorrência, entrega ou avanço. Arquivo com nome aleatório em storage/media/obras. */
+export const sitePhotos = pgTable(
+  'site_photos',
+  {
+    id: id(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    url: text('url').notNull(),
+    caption: text('caption'),
+    occurrenceId: uuid('occurrence_id').references(() => occurrences.id, { onDelete: 'set null' }),
+    receiptId: uuid('receipt_id').references(() => deliveryReceipts.id, { onDelete: 'set null' }),
+    stageUpdateId: uuid('stage_update_id').references(() => stageUpdates.id, { onDelete: 'set null' }),
+    userId: uuid('user_id'),
+    userName: text('user_name'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('site_photos_project_idx').on(t.projectId, t.createdAt)],
 )
 
 export type CostCategory = (typeof costCategory.enumValues)[number]

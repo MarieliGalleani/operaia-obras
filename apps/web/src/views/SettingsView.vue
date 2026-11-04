@@ -11,7 +11,7 @@ interface User {
   id: string
   name: string
   email: string
-  role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA'
+  role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'
   active: boolean
   lastLoginAt: string | null
   createdAt: string
@@ -20,6 +20,7 @@ const ROLES = [
   { value: 'ADMIN', title: 'Administrador', hint: 'Tudo, inclusive equipe e integrações' },
   { value: 'FINANCEIRO', title: 'Financeiro', hint: 'Aprova notas e registra pagamentos' },
   { value: 'GESTOR_OBRA', title: 'Gestor de obra', hint: 'Cadastra obras e confere notas, sem aprovar' },
+  { value: 'MESTRE', title: 'Mestre de obra', hint: 'Só o app de obra: pede material, recebe entrega, fotos e avanço. Não vê valores' },
 ]
 const roleTitle = (r: string) => ROLES.find((x) => x.value === r)?.title ?? r
 const team = ref<User[]>([])

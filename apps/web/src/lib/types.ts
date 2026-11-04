@@ -44,7 +44,16 @@ export interface DocumentDetail {
   alerts: { id: string; severity: string; title: string; message: string }[]
   purchaseOrderId: string | null
   purchaseOrderRef: string | null
-  purchaseOrder: { id: string; code: string; status: string; projectId: string; projectName: string; expectedDate: string | null; total: number } | null
+  purchaseOrder: {
+    id: string
+    code: string
+    status: string
+    projectId: string
+    projectName: string
+    expectedDate: string | null
+    total: number
+    fieldReceipts: { receivedAt: string; receivedByName: string | null; problem: boolean; notes: string | null; items: { description: string; unit: string | null; quantity: number }[] }[]
+  } | null
   orderConference: {
     description: string
     unit: string | null

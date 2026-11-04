@@ -320,9 +320,19 @@ async function openFile() {
                 </div>
               </div>
               <template v-if="doc.purchaseOrder">
-                <div class="text-body-2 muted mb-3">
+                <div class="text-body-2 muted mb-2">
                   Obra {{ doc.purchaseOrder.projectName }} · entrega prometida {{ date(doc.purchaseOrder.expectedDate) }}
                 </div>
+                <div v-for="(r, k) in doc.purchaseOrder.fieldReceipts" :key="k" class="text-body-2 mb-1" :class="r.problem ? 'text-warning' : 'text-success'">
+                  <v-icon size="16">{{ r.problem ? 'mdi-truck-alert-outline' : 'mdi-hard-hat' }}</v-icon>
+                  Conferido na obra por {{ r.receivedByName }} em {{ date(r.receivedAt) }}:
+                  <span v-for="(i, j) in r.items" :key="j">{{ qtyFmt(i.quantity) }} {{ i.unit }}<span v-if="j < r.items.length - 1">, </span></span>
+                  <span v-if="r.notes"> · {{ r.notes }}</span>
+                </div>
+                <div v-if="!doc.purchaseOrder.fieldReceipts.length" class="text-caption muted mb-1">
+                  <v-icon size="14">mdi-hard-hat</v-icon> Entrega ainda não conferida na obra pelo mestre.
+                </div>
+                <div class="mb-2" />
                 <v-table density="compact" class="conf-table">
                   <thead>
                     <tr><th>Item</th><th class="text-right">Pedido</th><th class="text-right">Nota</th></tr>

@@ -12,6 +12,8 @@ const router = createRouter({
     { path: '/obras', name: 'projects', component: () => import('./views/ProjectsView.vue'), meta: { title: 'Obras' } },
     { path: '/obras/:id', name: 'project', component: () => import('./views/ProjectDetailView.vue'), meta: { title: 'Obra' } },
     { path: '/orcamentos', name: 'budgets', component: () => import('./views/BudgetsView.vue'), meta: { title: 'Orçamentos' } },
+    { path: '/campo', name: 'field', component: () => import('./views/FieldHomeView.vue'), meta: { title: 'App de obra' } },
+    { path: '/campo/:id', name: 'field-project', component: () => import('./views/FieldProjectView.vue'), meta: { title: 'App de obra' } },
     { path: '/compras', name: 'purchases', component: () => import('./views/PurchasesView.vue'), meta: { title: 'Compras' } },
     { path: '/notas', name: 'documents', component: () => import('./views/DocumentsView.vue'), meta: { title: 'Notas Fiscais' } },
     { path: '/contas-a-pagar', name: 'payables', component: () => import('./views/PayablesView.vue'), meta: { title: 'Contas a Pagar' } },
@@ -37,6 +39,8 @@ router.beforeEach(async (to) => {
     return { name: 'login' }
   }
   if (to.meta.owner && (!auth.isPlatformOwner || auth.impersonating)) return { name: 'dashboard' }
+  // mestre de obra só usa o app de obra
+  if (auth.isMestre && !to.path.startsWith('/campo')) return { name: 'field' }
   return true
 })
 

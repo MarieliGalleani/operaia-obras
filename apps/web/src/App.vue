@@ -19,6 +19,7 @@ const search = ref('')
 const nav = [
   { title: 'Visão Geral', icon: 'mdi-home-outline', to: '/' },
   { title: 'Obras', icon: 'mdi-office-building-outline', to: '/obras' },
+  { title: 'App de obra', icon: 'mdi-hard-hat', to: '/campo' },
   { title: 'Orçamentos', icon: 'mdi-calculator-variant-outline', to: '/orcamentos' },
   { title: 'Compras', icon: 'mdi-cart-outline', to: '/compras' },
   { title: 'Fornecedores', icon: 'mdi-truck-outline', to: '/fornecedores' },
@@ -30,6 +31,7 @@ const nav = [
   { title: 'Configurações', icon: 'mdi-cog-outline', to: '/configuracoes', admin: true },
 ]
 const visibleNav = computed(() => {
+  if (auth.isMestre) return nav.filter((n) => n.to === '/campo')
   const items = nav.filter((n) => !n.admin || auth.me?.user.role === 'ADMIN')
   return auth.isPlatformOwner && !auth.impersonating
     ? [{ title: 'Plataforma', icon: 'mdi-shield-crown-outline', to: '/plataforma' }, ...items]
@@ -113,7 +115,7 @@ function logout() {
         </div>
         <v-spacer />
         <v-text-field
-          v-if="mdAndUp"
+          v-if="mdAndUp && !auth.isMestre"
           v-model="search"
           placeholder="Buscar nota, fornecedor, número…"
           prepend-inner-icon="mdi-magnify"
@@ -122,7 +124,7 @@ function logout() {
           bg-color="#F7F9F8"
           @keyup.enter="doSearch"
         />
-        <v-btn icon variant="text" to="/inteligencia" aria-label="Alertas"><v-icon>mdi-bell-outline</v-icon></v-btn>
+        <v-btn v-if="!auth.isMestre" icon variant="text" to="/inteligencia" aria-label="Alertas"><v-icon>mdi-bell-outline</v-icon></v-btn>
         <v-menu>
           <template #activator="{ props }">
             <v-btn v-bind="props" variant="text" class="mr-2 px-2">

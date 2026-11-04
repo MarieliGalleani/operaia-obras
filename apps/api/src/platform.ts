@@ -15,7 +15,7 @@ import { audit } from './services/audit.js'
 import { AppError, badRequest, notFound } from './services/errors.js'
 import bcrypt from 'bcryptjs'
 
-const roleEnum = z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA'])
+const roleEnum = z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE'])
 const me = (req: FastifyRequest) => req.user as AuthUser
 
 async function requireOwner(req: FastifyRequest) {

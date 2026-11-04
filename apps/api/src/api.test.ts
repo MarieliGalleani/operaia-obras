@@ -566,3 +566,103 @@ describe('compras: pedido × nota', () => {
     expect(res.statusCode).toBe(409)
   })
 })
+
+describe('app de obra (mestre)', () => {
+  let mestre = ''
+  let stageId = ''
+  let requestId = ''
+  let orderId = ''
+  const fieldCnpj = cnpjWithDigits(rnd() + '0001')
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+
+  beforeAll(async () => {
+    const email = `m${rnd()}@teste.com`
+    const [u] = await db.insert(users).values({ companyId: createdCompanies[0], name: 'Mestre Zé', email, passwordHash: await bcrypt.hash('senha123', 4), role: 'MESTRE' }).returning()
+    // o login tem limite de tentativas por IP; nos testes o token é emitido direto
+    mestre = app.jwt.sign({ sub: u.id, companyId: u.companyId, role: 'MESTRE', name: u.name })
+  })
+
+  it('mestre só acessa o app de obra e não vê valores', async () => {
+    expect((await api('GET', '/api/projects', undefined, mestre)).statusCode).toBe(403)
+    expect((await api('GET', '/api/payables', undefined, mestre)).statusCode).toBe(403)
+    const res = await api('GET', '/api/field/projects', undefined, mestre)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().map((p: any) => p.id)).toContain(projectB)
+    const detail = await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)
+    expect(detail.body).not.toMatch(/"(total|unitPrice|budgetTotal|amount)"/)
+    expect((await api('GET', `/api/field/projects/${projectB}`, undefined, otherToken)).statusCode).toBe(404)
+  })
+
+  it('escritório define etapas e o mestre atualiza o avanço físico', async () => {
+    const tpl = (await api('GET', '/api/stage-templates')).json()
+    const res = await app.inject({ method: 'PUT', url: `/api/projects/${projectB}/stages`, headers: { authorization: `Bearer ${token}` }, payload: { stages: tpl } })
+    expect(res.statusCode).toBe(200)
+    expect((await app.inject({ method: 'PUT', url: `/api/projects/${projectB}/stages`, headers: { authorization: `Bearer ${mestre}` }, payload: { stages: tpl } })).statusCode).toBe(403)
+    const stages = res.json().stages
+    stageId = stages.find((s: any) => s.name === 'Fundação').id
+    const up = await api('POST', `/api/field/stages/${stageId}/progress`, { progress: 100, note: 'Fundação concluída' }, mestre)
+    expect(up.statusCode).toBe(200)
+    const d = (await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)).json()
+    expect(d.physicalPct).toBe(12) // peso 12 de 100
+    expect(d.stageUpdates[0].fromProgress).toBe(0)
+  })
+
+  it('pedido de material vira pedido de compra e a entrega é conferida na obra', async () => {
+    const r = await api('POST', `/api/field/projects/${projectB}/requests`, { items: [{ description: 'Cimento CP II 50kg', unit: 'sc', quantity: 80 }], urgent: true }, mestre)
+    expect(r.statusCode).toBe(201)
+    requestId = r.json().id
+    const open = (await api('GET', '/api/material-requests?status=ABERTA')).json()
+    expect(open.map((x: any) => x.id)).toContain(requestId)
+
+    const s = (await api('POST', '/api/suppliers', { cnpj: fieldCnpj, name: 'Depósito Campo Ltda', status: 'HOMOLOGADO' })).json()
+    const o = await api('POST', '/api/purchase-orders', { projectId: projectB, supplierId: s.id, requestId, items: [{ description: 'Cimento CP II 50kg', unit: 'sc', quantity: 80, unitPrice: 39 }] })
+    expect(o.statusCode).toBe(201)
+    orderId = o.json().id
+    expect(o.json().request.id).toBe(requestId)
+    await api('POST', `/api/purchase-orders/${orderId}/approve`)
+    // a mesma solicitação não vira dois pedidos
+    const again = await api('POST', '/api/purchase-orders', { projectId: projectB, supplierId: s.id, requestId, items: [{ description: 'Areia', quantity: 1, unitPrice: 1 }] })
+    expect(again.statusCode).toBe(409)
+
+    const d = (await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)).json()
+    const delivery = d.deliveries.find((x: any) => x.id === orderId)
+    expect(delivery.items[0].remainingQty).toBe(80)
+    expect(d.requests.find((x: any) => x.id === requestId).status).toBe('EM_COMPRA')
+
+    const rec = await api('POST', `/api/field/orders/${orderId}/receive`, { items: [{ orderItemId: delivery.items[0].id, quantity: 50 }] }, mestre)
+    expect(rec.statusCode).toBe(201)
+    const order = (await api('GET', `/api/purchase-orders/${orderId}`)).json()
+    expect(order.items[0].onSiteQty).toBe(50)
+    expect(order.receipts[0].receivedByName).toBe('Mestre Zé')
+  })
+
+  it('entrega com problema e ocorrência grave viram alerta; foto fica na obra', async () => {
+    const d = (await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)).json()
+    const item = d.deliveries.find((x: any) => x.id === orderId).items[0]
+    const bad = await api('POST', `/api/field/orders/${orderId}/receive`, { items: [{ orderItemId: item.id, quantity: 25 }], problem: true, notes: '5 sacos rasgados' }, mestre)
+    expect(bad.json().occurrenceId).toBeTruthy()
+
+    const occ = await api('POST', `/api/field/projects/${projectB}/occurrences`, { type: 'SEGURANCA', severity: 'ALTA', title: 'Andaime sem guarda-corpo' }, mestre)
+    expect(occ.statusCode).toBe(201)
+    let alerts = (await api('GET', '/api/alerts')).json().filter((a: any) => a.type === 'OCORRENCIA')
+    expect(alerts.some((a: any) => a.severity === 'CRITICO' && a.title.includes('Andaime'))).toBe(true)
+    expect(alerts.some((a: any) => a.title.includes('com problema'))).toBe(true)
+
+    const boundary = '----operaia' + rnd()
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="occurrenceId"\r\n\r\n${occ.json().id}\r\n`),
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\nAndaime do bloco B\r\n`),
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="f.png"\r\nContent-Type: image/png\r\n\r\n`),
+      png,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ])
+    const ph = await app.inject({ method: 'POST', url: `/api/field/projects/${projectB}/photos`, headers: { authorization: `Bearer ${mestre}`, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body })
+    expect(ph.statusCode).toBe(201)
+    const after = (await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)).json()
+    expect(after.occurrences.find((o: any) => o.id === occ.json().id).photos).toHaveLength(1)
+
+    await api('POST', `/api/field/occurrences/${occ.json().id}/resolve`, { resolution: 'Guarda-corpo instalado' }, mestre)
+    alerts = (await api('GET', '/api/alerts')).json().filter((a: any) => a.type === 'OCORRENCIA')
+    expect(alerts.some((a: any) => a.title.includes('Andaime'))).toBe(false)
+  })
+})

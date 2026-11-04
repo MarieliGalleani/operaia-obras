@@ -41,7 +41,7 @@ async function main() {
       const c = await db.query.companies.findFirst({ where: eq(companies.cnpj, onlyDigits(need('cnpj'))) })
       if (!c) throw new Error('Construtora não encontrada para esse CNPJ')
       const role = (args.perfil ?? 'FINANCEIRO').toUpperCase() as Role
-      if (!['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA'].includes(role)) throw new Error('--perfil deve ser ADMIN, FINANCEIRO ou GESTOR_OBRA')
+      if (!['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE'].includes(role)) throw new Error('--perfil deve ser ADMIN, FINANCEIRO, GESTOR_OBRA ou MESTRE')
       const { user, password } = await createUser({ companyId: c.id, name: need('nome'), email: need('email'), role })
       console.log(`✔ ${user.email} (${role}) — senha provisória: ${password}`)
       break

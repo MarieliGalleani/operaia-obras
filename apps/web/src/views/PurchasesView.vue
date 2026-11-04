@@ -47,6 +47,19 @@ interface OrderItem {
   lastInvoicedPrice: number | null
   priceAbove: boolean
   situation: 'PENDENTE' | 'PARCIAL' | 'ENTREGUE' | 'ACIMA'
+  onSiteQty: number
+}
+interface MaterialRequest {
+  id: string
+  projectId: string
+  projectName: string
+  projectCode: string
+  items: { description: string; unit: string | null; quantity: number }[]
+  neededBy: string | null
+  urgent: boolean
+  notes: string | null
+  createdAt: string
+  createdByName: string | null
 }
 interface OrderDetail extends Omit<OrderRow, 'projectName' | 'projectCode' | 'supplierName'> {
   project: { id: string; code: string; name: string }
@@ -61,6 +74,8 @@ interface OrderDetail extends Omit<OrderRow, 'projectName' | 'projectCode' | 'su
   documents: { id: string; number: string | null; issueDate: string | null; totalAmount: number | null; status: string; issues: { code: string; message: string }[] }[]
   deliveries: { issueDate: string; delayDays: number | null }[]
   history: { action: string; createdAt: string; userName: string | null }[]
+  receipts: { id: string; items: { description: string; unit: string | null; quantity: number }[]; problem: boolean; notes: string | null; receivedAt: string; receivedByName: string | null; photos: string[] }[]
+  request: { id: string; createdByName: string | null; createdAt: string } | null
 }
 interface SupplierLite {
   id: string
@@ -100,10 +115,11 @@ const rows = ref<OrderRow[]>([])
 const loading = ref(true)
 const filter = ref<string>('abertos')
 
+const requests = ref<MaterialRequest[]>([])
 async function load() {
   loading.value = true
   try {
-    rows.value = await api.get<OrderRow[]>('/api/purchase-orders')
+    ;[rows.value, requests.value] = await Promise.all([api.get<OrderRow[]>('/api/purchase-orders'), api.get<MaterialRequest[]>('/api/material-requests?status=ABERTA')])
   } catch (e) {
     toastError(e)
   } finally {
@@ -206,7 +222,7 @@ async function cancel() {
     busy.value = false
   }
 }
-const HISTORY: Record<string, string> = { created: 'Pedido criado', updated: 'Pedido editado', approved: 'Pedido aprovado', cancelled: 'Pedido cancelado' }
+const HISTORY: Record<string, string> = { created: 'Pedido criado', updated: 'Pedido editado', approved: 'Pedido aprovado', cancelled: 'Pedido cancelado', received_on_site: 'Entrega conferida na obra' }
 const delivery = computed(() => {
   const d = detail.value?.deliveries ?? []
   if (!d.length) return null
@@ -224,6 +240,7 @@ interface FormItem {
 }
 const formOpen = ref(false)
 const editingId = ref<string | null>(null)
+const fromRequest = ref<MaterialRequest | null>(null)
 const form = ref({ projectId: null as string | null, supplierId: null as string | null, category: 'MATERIAIS' as CostCategory, expectedDate: '', paymentTerms: '', notes: '' })
 const items = ref<FormItem[]>([])
 const suppliers = ref<SupplierLite[]>([])
@@ -244,10 +261,16 @@ async function ensureSuppliers() {
   if (!suppliers.value.length) suppliers.value = (await api.get<SupplierLite[]>('/api/suppliers?')).filter((s) => s.status !== 'BLOQUEADO')
 }
 const blankItem = (): FormItem => ({ description: '', unit: '', quantity: '', unitPrice: '' })
-async function openNew() {
+async function openNew(req?: MaterialRequest) {
   editingId.value = null
+  fromRequest.value = req ?? null
   form.value = { projectId: null, supplierId: null, category: 'MATERIAIS', expectedDate: ymd(new Date(Date.now() + 7 * 86400000)), paymentTerms: '28 dias', notes: '' }
-  items.value = [blankItem()]
+  items.value = req ? req.items.map((i) => ({ description: i.description, unit: i.unit ?? '', quantity: String(i.quantity).replace('.', ','), unitPrice: '' })) : [blankItem()]
+  if (req) {
+    form.value.projectId = req.projectId
+    if (req.neededBy) form.value.expectedDate = ymd(new Date(req.neededBy))
+    form.value.notes = req.notes ?? ''
+  }
   materials.value = []
   formOpen.value = true
   try {
@@ -260,6 +283,7 @@ async function openEdit() {
   const d = detail.value
   if (!d) return
   editingId.value = d.id
+  fromRequest.value = null
   form.value = {
     projectId: d.project.id,
     supplierId: d.supplier.id,
@@ -311,6 +335,7 @@ async function save(andApprove: boolean) {
     paymentTerms: form.value.paymentTerms || null,
     notes: form.value.notes || null,
     items: items.value.map((i) => ({ description: i.description, unit: i.unit || null, quantity: num(i.quantity), unitPrice: num(i.unitPrice) })),
+    ...(fromRequest.value && !editingId.value && { requestId: fromRequest.value.id }),
   }
   try {
     let saved = editingId.value
@@ -327,6 +352,24 @@ async function save(andApprove: boolean) {
     saving.value = false
   }
 }
+// recusar pedido de material da obra
+const declining = ref<MaterialRequest | null>(null)
+const declineReason = ref('')
+async function decline() {
+  if (!declining.value) return
+  busy.value = true
+  try {
+    await api.post(`/api/material-requests/${declining.value.id}/decline`, { reason: declineReason.value })
+    declining.value = null
+    toast('Pedido de material recusado; o mestre vê o motivo no app de obra', 'info')
+    load()
+  } catch (e) {
+    toastError(e)
+  } finally {
+    busy.value = false
+  }
+}
+const when = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
 const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, title: s.tradeName ?? s.name, subtitle: s.status === 'HOMOLOGADO' ? 'Homologado' : 'Pendente de homologação' })))
 </script>
 
@@ -336,7 +379,7 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
       <div class="page-title">Compras</div>
       <div class="page-subtitle">Pedido antes da nota. Quando a nota chega, o sistema confere preço, quantidade e prazo de entrega contra o pedido.</div>
     </div>
-    <v-btn color="primary" prepend-icon="mdi-plus" @click="openNew">Novo pedido</v-btn>
+    <v-btn color="primary" prepend-icon="mdi-plus" @click="openNew()">Novo pedido</v-btn>
   </div>
 
   <v-row dense class="mb-2">
@@ -349,6 +392,33 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
     </v-col>
     <v-col cols="6" md="3"><KpiCard label="Rascunhos" :value="String(kpis.drafts).padStart(2, '0')" hint="aguardando aprovação" icon="mdi-pencil-outline" /></v-col>
   </v-row>
+
+  <v-card v-if="requests.length" class="pa-4 mb-4 req-card">
+    <div class="d-flex align-center ga-2 mb-2">
+      <v-icon color="primary">mdi-hard-hat</v-icon>
+      <div class="card-title" style="font-size: 1rem">Pedidos de material da obra</div>
+      <v-chip size="small" color="primary" variant="flat">{{ requests.length }}</v-chip>
+      <v-spacer />
+      <span class="text-caption muted">feitos pelo mestre no app de obra</span>
+    </div>
+    <div v-for="r in requests" :key="r.id" class="req-row">
+      <div class="flex-grow-1" style="min-width: 0">
+        <div class="d-flex align-center ga-2 flex-wrap">
+          <b>{{ r.projectName }}</b>
+          <v-chip v-if="r.urgent" size="x-small" color="error" variant="flat">urgente</v-chip>
+          <span class="text-caption muted">{{ r.createdByName }} · {{ when(r.createdAt) }}<template v-if="r.neededBy"> · precisa até {{ date(r.neededBy) }}</template></span>
+        </div>
+        <div class="text-body-2">
+          <span v-for="(i, k) in r.items" :key="k">{{ qty(i.quantity) }} {{ i.unit }} {{ i.description.toLowerCase() }}<span v-if="k < r.items.length - 1"> · </span></span>
+        </div>
+        <div v-if="r.notes" class="text-caption muted">{{ r.notes }}</div>
+      </div>
+      <div class="d-flex ga-2 flex-shrink-0">
+        <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-cart-plus" @click="openNew(r)">Fazer pedido</v-btn>
+        <v-btn v-if="canApprove" size="small" variant="text" @click="(declining = r), (declineReason = '')">Recusar</v-btn>
+      </div>
+    </div>
+  </v-card>
 
   <div class="d-flex flex-wrap ga-2 mb-3">
     <v-chip
@@ -501,7 +571,8 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
                   <th>Item</th>
                   <th class="text-right">Pedido</th>
                   <th class="text-right">Preço combinado</th>
-                  <th class="text-right">Recebido</th>
+                  <th class="text-right">Na nota</th>
+                  <th class="text-right">Na obra</th>
                   <th class="text-right">Preço na nota</th>
                   <th>Situação</th>
                 </tr>
@@ -517,6 +588,10 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
                   <td class="text-right money">
                     {{ qty(i.receivedQty) }} {{ i.unit }}
                     <div v-if="i.inReviewQty" class="text-caption text-warning">+ {{ qty(i.inReviewQty) }} em conferência</div>
+                  </td>
+                  <td class="text-right money" :class="i.onSiteQty && i.onSiteQty < i.receivedQty + i.inReviewQty ? 'text-error font-weight-bold' : ''">
+                    {{ i.onSiteQty ? `${qty(i.onSiteQty)} ${i.unit ?? ''}` : '—' }}
+                    <div v-if="i.onSiteQty && i.onSiteQty < i.receivedQty + i.inReviewQty" class="text-caption">nota cobra {{ qty(i.receivedQty + i.inReviewQty - i.onSiteQty) }} a mais</div>
                   </td>
                   <td class="text-right money" :class="i.priceAbove ? 'text-error font-weight-bold' : ''">
                     {{ unitPrice(i.lastInvoicedPrice) }}
@@ -555,6 +630,19 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
               </div>
             </v-col>
             <v-col cols="12" md="5">
+              <template v-if="detail.receipts.length">
+                <div class="card-title mb-2" style="font-size: 1rem">Recebido na obra</div>
+                <div v-for="r in detail.receipts" :key="r.id" class="text-body-2 mb-2">
+                  <v-icon size="16" :color="r.problem ? 'warning' : 'success'">{{ r.problem ? 'mdi-truck-alert-outline' : 'mdi-check-circle-outline' }}</v-icon>
+                  {{ when(r.receivedAt) }} · {{ r.receivedByName }}:
+                  <span v-for="(i, k) in r.items" :key="k">{{ qty(i.quantity) }} {{ i.unit }}<span v-if="k < r.items.length - 1">, </span></span>
+                  <div v-if="r.notes" class="text-caption" :class="r.problem ? 'text-warning' : 'muted'">{{ r.notes }}</div>
+                  <div v-if="r.photos.length" class="d-flex ga-1 mt-1"><img v-for="u in r.photos" :key="u" :src="u" class="rc-photo" alt="Foto da entrega" /></div>
+                </div>
+              </template>
+              <div v-if="detail.request" class="text-body-2 mb-3">
+                <v-icon size="16" color="primary">mdi-hard-hat</v-icon> Veio do pedido de material de {{ detail.request.createdByName }} em {{ date(detail.request.createdAt) }}
+              </div>
               <div class="card-title mb-2" style="font-size: 1rem">Histórico</div>
               <div v-for="(h, k) in detail.history" :key="k" class="text-body-2 mb-1">
                 <span class="muted">{{ date(h.createdAt) }}</span> · {{ HISTORY[h.action] ?? h.action }}<span v-if="h.userName"> por {{ h.userName }}</span>
@@ -579,11 +667,26 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
     </v-card>
   </v-dialog>
 
+  <v-dialog :model-value="!!declining" max-width="460" @update:model-value="declining = null">
+    <v-card class="pa-5">
+      <div class="card-title mb-2">Recusar pedido de material?</div>
+      <div class="text-body-2 muted mb-3">O mestre vê o motivo no app de obra.</div>
+      <v-textarea v-model="declineReason" label="Motivo" rows="2" auto-grow autofocus />
+      <div class="d-flex justify-end ga-2">
+        <v-btn variant="text" @click="declining = null">Voltar</v-btn>
+        <v-btn color="error" :disabled="declineReason.trim().length < 3" :loading="busy" @click="decline">Recusar</v-btn>
+      </div>
+    </v-card>
+  </v-dialog>
+
   <!-- NOVO / EDITAR -->
   <v-dialog v-model="formOpen" max-width="920" scrollable>
     <v-card>
       <div class="pa-5 pb-2 d-flex align-center justify-space-between">
-        <div class="card-title">{{ editingId ? 'Editar pedido' : 'Novo pedido de compra' }}</div>
+        <div>
+          <div class="card-title">{{ editingId ? 'Editar pedido' : 'Novo pedido de compra' }}</div>
+          <div v-if="fromRequest" class="text-caption muted">A partir do pedido de material de {{ fromRequest.createdByName }} ({{ fromRequest.projectName }}). Escolha o fornecedor e os preços.</div>
+        </div>
         <v-btn icon="mdi-close" variant="text" aria-label="Fechar" @click="formOpen = false" />
       </div>
       <v-card-text class="pa-5 pt-2">
@@ -644,6 +747,28 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
 </template>
 
 <style scoped>
+.req-card {
+  border-left: 4px solid rgb(var(--v-theme-primary));
+}
+.req-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+@media (max-width: 700px) {
+  .req-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.rc-photo {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+}
 .table-wrap {
   overflow-x: auto;
 }

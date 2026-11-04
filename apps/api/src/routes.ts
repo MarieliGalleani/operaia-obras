@@ -28,6 +28,20 @@ import { exportReport, getReports } from './services/reports.js'
 import { getSupplierPriceSummaries, getSupplierPrices } from './services/prices.js'
 import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { getDashboard } from './services/dashboard.js'
+import {
+  DEFAULT_STAGES,
+  addSitePhoto,
+  createMaterialRequest,
+  createOccurrence,
+  declineMaterialRequest,
+  fieldProject,
+  fieldProjects,
+  listMaterialRequests,
+  receiveDelivery,
+  resolveOccurrence,
+  setStages,
+  updateStageProgress,
+} from './services/field.js'
 import { approveOrder, cancelOrder, createOrder, getDeliveryStats, getOrder, linkDocumentToOrder, listOrders, updateOrder } from './services/purchases.js'
 import {
   approveDocument,
@@ -154,6 +168,13 @@ export async function registerRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------- protegido
   await app.register(async (r) => {
     r.addHook('onRequest', app.authenticate)
+    // Mestre de obra: só o app de obra (sem valores, sem financeiro)
+    r.addHook('onRequest', async (req, reply) => {
+      const u = req.user as AuthUser | undefined
+      if (u?.role === 'MESTRE' && !req.url.startsWith('/api/field/') && !req.url.startsWith('/api/auth/')) {
+        return reply.code(403).send({ code: 'SEM_PERMISSAO', message: 'Seu perfil acessa só o app de obra.' })
+      }
+    })
     await r.register(async (p) => registerPlatformRoutes(p))
 
     r.get('/api/auth/me', async (req) => {
@@ -400,6 +421,7 @@ export async function registerRoutes(app: FastifyInstance) {
         .array(z.object({ description: z.string().min(2).max(200), unit: z.string().max(10).optional().nullable(), quantity: z.number().positive(), unitPrice: z.number().nonnegative() }))
         .min(1)
         .max(200),
+      requestId: z.string().uuid().optional().nullable(),
     })
     r.get('/api/purchase-orders', async (req) => {
       const q = z.object({ status: z.string().optional(), projectId: z.string().uuid().optional(), supplierId: z.string().uuid().optional() }).parse(req.query)
@@ -438,6 +460,87 @@ export async function registerRoutes(app: FastifyInstance) {
       const { orderId } = z.object({ orderId: z.string().uuid().nullable() }).parse(req.body)
       await linkDocumentToOrder(u.companyId, u.sub, id, orderId)
       return getDocument(u.companyId, id)
+    })
+
+    // ------------------------------------------------------- app de obra
+    const fieldItems = z.array(z.object({ description: z.string().min(2).max(200), unit: z.string().max(10).optional().nullable(), quantity: z.number().positive() })).min(1).max(50)
+    const uid = z.object({ id: z.string().uuid() })
+    const fieldUser = (req: FastifyRequest) => ({ id: me(req).sub, name: me(req).name })
+
+    r.get('/api/field/projects', async (req) => fieldProjects(me(req).companyId))
+    r.get('/api/field/projects/:id', async (req) => fieldProject(me(req).companyId, uid.parse(req.params).id))
+    r.post('/api/field/projects/:id/requests', async (req, reply) => {
+      const body = z.object({ items: fieldItems, neededBy: ymd.optional().nullable(), urgent: z.boolean().optional(), notes: z.string().max(1000).optional().nullable() }).parse(req.body)
+      return reply.code(201).send(await createMaterialRequest(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body))
+    })
+    r.post('/api/field/orders/:id/receive', async (req, reply) => {
+      const body = z
+        .object({ items: z.array(z.object({ orderItemId: z.string().uuid(), quantity: z.number().nonnegative() })).max(200), problem: z.boolean().optional(), notes: z.string().max(1000).optional().nullable() })
+        .parse(req.body)
+      return reply.code(201).send(await receiveDelivery(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body))
+    })
+    r.post('/api/field/projects/:id/occurrences', async (req, reply) => {
+      const body = z
+        .object({
+          type: z.enum(['FALTA_MATERIAL', 'ATRASO', 'SEGURANCA', 'QUALIDADE', 'CLIMA', 'ENTREGA', 'OUTRO']),
+          severity: z.enum(['BAIXA', 'MEDIA', 'ALTA']),
+          title: z.string().min(3).max(140),
+          description: z.string().max(2000).optional().nullable(),
+        })
+        .parse(req.body)
+      return reply.code(201).send(await createOccurrence(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body))
+    })
+    r.post('/api/field/occurrences/:id/resolve', async (req) => {
+      const { resolution } = z.object({ resolution: z.string().min(3).max(1000) }).parse(req.body)
+      return resolveOccurrence(me(req).companyId, fieldUser(req), uid.parse(req.params).id, resolution)
+    })
+    r.post('/api/field/stages/:id/progress', async (req) => {
+      const body = z.object({ progress: z.number().min(0).max(100), note: z.string().max(1000).optional().nullable() }).parse(req.body)
+      return updateStageProgress(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body)
+    })
+    /** Foto da obra: multipart com o arquivo e, opcionalmente, legenda e vínculo (ocorrência, entrega, avanço). */
+    r.post('/api/field/projects/:id/photos', async (req, reply) => {
+      const { id } = uid.parse(req.params)
+      if (!req.isMultipart()) throw badRequest('SEM_ARQUIVO', 'Envie a foto.')
+      const fields: Record<string, string> = {}
+      let content: Buffer | null = null
+      for await (const part of req.parts()) {
+        if (part.type === 'file') content = await part.toBuffer()
+        else fields[part.fieldname] = String(part.value ?? '')
+      }
+      if (!content) throw badRequest('SEM_ARQUIVO', 'Envie a foto.')
+      if (content.length > 8 * 1024 * 1024) throw badRequest('IMAGEM_GRANDE', 'A foto pode ter no máximo 8 MB.')
+      const kind = imageKind(content)
+      if (!kind) throw badRequest('IMAGEM_INVALIDA', 'Envie uma foto em JPG, PNG ou WEBP.')
+      const ref = z
+        .object({ caption: z.string().max(300).optional(), occurrenceId: z.string().uuid().optional(), receiptId: z.string().uuid().optional(), stageUpdateId: z.string().uuid().optional() })
+        .parse(Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== '')))
+      await mkdir(MEDIA_DIR, { recursive: true })
+      const file = `${randomBytes(16).toString('hex')}.${kind}`
+      await writeFile(path.join(MEDIA_DIR, file), content)
+      try {
+        return reply.code(201).send(await addSitePhoto(me(req).companyId, fieldUser(req), id, { url: MEDIA_PREFIX + file, ...ref }))
+      } catch (e) {
+        await unlink(path.join(MEDIA_DIR, file)).catch(() => {})
+        throw e
+      }
+    })
+
+    // escritório: etapas da obra e solicitações de material
+    r.put('/api/projects/:id/stages', async (req) => {
+      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      const { stages } = z.object({ stages: z.array(z.object({ id: z.string().uuid().optional().nullable(), name: z.string().min(2).max(80), weight: z.number().min(1).max(1000) })).min(1).max(40) }).parse(req.body)
+      return setStages(me(req).companyId, me(req).sub, uid.parse(req.params).id, stages)
+    })
+    r.get('/api/stage-templates', async () => DEFAULT_STAGES)
+    r.get('/api/material-requests', async (req) => {
+      const q = z.object({ status: z.string().optional() }).parse(req.query)
+      return listMaterialRequests(me(req).companyId, q.status)
+    })
+    r.post('/api/material-requests/:id/decline', async (req) => {
+      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      const { reason } = z.object({ reason: z.string().min(3) }).parse(req.body)
+      return declineMaterialRequest(me(req).companyId, fieldUser(req), uid.parse(req.params).id, reason)
     })
 
     // --------------------------------------------------------- documentos
@@ -628,7 +731,7 @@ export async function registerRoutes(app: FastifyInstance) {
       requireRole(req, 'ADMIN')
       const u = me(req)
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-      const body = z.object({ role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA']).optional(), active: z.boolean().optional() }).parse(req.body)
+      const body = z.object({ role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE']).optional(), active: z.boolean().optional() }).parse(req.body)
       if (id === u.sub) throw badRequest('PROPRIO', 'Você não pode alterar o seu próprio perfil ou acesso.')
       const [row] = await db
         .update(users)
@@ -643,7 +746,7 @@ export async function registerRoutes(app: FastifyInstance) {
     r.post('/api/users', async (req, reply) => {
       requireRole(req, 'ADMIN')
       const body = z
-        .object({ name: z.string().min(2), email: z.string().email(), role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA']) })
+        .object({ name: z.string().min(2), email: z.string().email(), role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE']) })
         .parse(req.body)
       const res = await createUser({ ...body, companyId: me(req).companyId, createdBy: me(req).sub })
       // a senha provisória só é mostrada uma vez

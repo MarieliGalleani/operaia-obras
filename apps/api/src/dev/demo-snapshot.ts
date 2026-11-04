@@ -49,6 +49,11 @@ for (const s of ['ABERTO,PARCIAL', 'PAGO', 'ABERTO,PARCIAL,PAGO,CANCELADO']) {
 }
 const sups = (await grab('/api/suppliers?')) as { id: string }[]
 for (const s of sups) await grab(`/api/suppliers/${s.id}/prices`)
+const fieldList = (await grab('/api/field/projects')) as { id: string }[]
+for (const p of fieldList) await grab(`/api/field/projects/${p.id}`)
+for (const p of projects) if (!fieldList.some((f) => f.id === p.id)) await grab(`/api/field/projects/${p.id}`)
+await grab('/api/material-requests?status=ABERTA')
+await grab('/api/stage-templates')
 const orders = (await grab('/api/purchase-orders')) as { id: string }[]
 for (const o of orders) await grab(`/api/purchase-orders/${o.id}`)
 await grab('/api/alerts?status=ABERTO')

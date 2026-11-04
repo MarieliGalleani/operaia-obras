@@ -16,6 +16,7 @@ import {
   alerts,
   documentItems,
   documents,
+  materialRequests,
   projects,
   purchaseOrderItems,
   purchaseOrders,
@@ -28,6 +29,7 @@ import { formatBRL } from '../domain/money.js'
 import { audit } from './audit.js'
 import { raiseAlert, resolveAlerts } from './alerts.js'
 import { badRequest, conflict, notFound } from './errors.js'
+import { orderReceipts } from './field.js'
 
 const DAY = 86400000
 const PRICE_TOLERANCE = 0.01
@@ -333,6 +335,10 @@ export async function getOrder(companyId: string, id: string) {
     }
   }
   const delivery = (await deliveries(companyId)).filter((r) => r.orderId === id)
+  const receipts = await orderReceipts(id)
+  const onSite = new Map<string, number>()
+  for (const r of receipts) for (const i of r.items) onSite.set(i.orderItemId, (onSite.get(i.orderItemId) ?? 0) + i.quantity)
+  const [request] = await db.select({ id: materialRequests.id, createdByName: materialRequests.createdByName, createdAt: materialRequests.createdAt }).from(materialRequests).where(eq(materialRequests.orderId, id))
   return {
     ...order,
     code: orderCode(order.number),
@@ -342,11 +348,14 @@ export async function getOrder(companyId: string, id: string) {
       ...l,
       receivedQty: round2(l.receivedQty),
       inReviewQty: round2(l.inReviewQty),
+      onSiteQty: round2(onSite.get(l.id) ?? 0),
       situation: l.receivedQty >= l.orderedQty * (1 - QTY_TOLERANCE) ? (l.receivedQty > l.orderedQty * (1 + QTY_TOLERANCE) ? 'ACIMA' : 'ENTREGUE') : l.receivedQty > 0 ? 'PARCIAL' : 'PENDENTE',
     })),
     extras,
     documents: docs,
     deliveries: delivery.map((d) => ({ issueDate: d.issueDate, delayDays: d.delayDays })),
+    receipts,
+    request: request ?? null,
     history: history.rows,
   }
 }
@@ -360,6 +369,8 @@ export interface OrderInput {
   paymentTerms?: string | null
   notes?: string | null
   items: Array<{ description: string; unit?: string | null; quantity: number; unitPrice: number }>
+  /** solicitação de material da obra que originou o pedido */
+  requestId?: string | null
 }
 
 async function validateRefs(tx: Tx, companyId: string, input: Pick<OrderInput, 'projectId' | 'supplierId' | 'items'>) {
@@ -411,6 +422,14 @@ export async function createOrder(companyId: string, user: { id: string; name: s
       })
       .returning({ id: purchaseOrders.id })
     await tx.insert(purchaseOrderItems).values(rows.map((r) => ({ ...r, orderId: o.id })))
+    if (input.requestId) {
+      const [req] = await tx
+        .update(materialRequests)
+        .set({ status: 'EM_COMPRA', orderId: o.id, handledByName: user.name, handledAt: new Date() })
+        .where(and(eq(materialRequests.companyId, companyId), eq(materialRequests.id, input.requestId), eq(materialRequests.status, 'ABERTA'), eq(materialRequests.projectId, input.projectId)))
+        .returning({ id: materialRequests.id })
+      if (!req) throw conflict('SOLICITACAO_INVALIDA', 'A solicitação da obra já foi tratada ou é de outra obra.')
+    }
     await audit(tx, { companyId, userId: user.id, entity: 'purchase_order', entityId: o.id, action: 'created', data: input })
     return o.id
   })
@@ -590,6 +609,7 @@ export async function documentOrderInfo(companyId: string, doc: { id: string; su
           projectName: o.projectName,
           expectedDate: o.order.expectedDate,
           total: o.order.total,
+          fieldReceipts: (await orderReceipts(o.order.id)).map((r) => ({ receivedAt: r.receivedAt, receivedByName: r.receivedByName, problem: r.problem, notes: r.notes, items: r.items })),
         },
         orderConference: conferDocument(items, docItems, received),
         orderCandidates: [],
