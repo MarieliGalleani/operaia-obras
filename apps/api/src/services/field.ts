@@ -33,6 +33,17 @@ const DAY = 86400000
 const dayStart = (d: Date) => new Date(d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) + 'T00:00:00-03:00').getTime()
 const round2 = (v: number) => Math.round(v * 100) / 100
 
+/**
+ * Hora em que o registro aconteceu no canteiro (pode ter ficado na fila do celular sem internet).
+ * Não aceita futuro nem mais de 30 dias atrás.
+ */
+export function happenedAt(iso?: string | null) {
+  const now = Date.now()
+  const t = iso ? new Date(iso).getTime() : NaN
+  if (!Number.isFinite(t)) return new Date(now)
+  return new Date(Math.min(now, Math.max(now - 30 * DAY, t)))
+}
+
 export const OCCURRENCE_LABEL: Record<string, string> = {
   FALTA_MATERIAL: 'Falta de material',
   ATRASO: 'Atraso',
@@ -204,7 +215,12 @@ const cleanItems = (items: Array<Omit<FieldItem, 'unit'> & { unit?: string | nul
     .map((i) => ({ description: i.description.trim().toUpperCase(), unit: i.unit?.trim().toUpperCase() || null, quantity: Number(i.quantity) }))
     .filter((i) => i.description && i.quantity > 0)
 
-export async function createMaterialRequest(companyId: string, user: User, projectId: string, input: { items: Array<Omit<FieldItem, 'unit'> & { unit?: string | null }>; neededBy?: string | null; urgent?: boolean; notes?: string | null }) {
+export async function createMaterialRequest(
+  companyId: string,
+  user: User,
+  projectId: string,
+  input: { items: Array<Omit<FieldItem, 'unit'> & { unit?: string | null }>; neededBy?: string | null; urgent?: boolean; notes?: string | null; happenedAt?: string | null },
+) {
   await ownProject(companyId, projectId)
   const items = cleanItems(input.items)
   if (!items.length) throw badRequest('SEM_ITENS', 'Informe ao menos um material com quantidade.')
@@ -219,6 +235,7 @@ export async function createMaterialRequest(companyId: string, user: User, proje
       notes: input.notes,
       createdById: user.id,
       createdByName: user.name,
+      createdAt: happenedAt(input.happenedAt),
     })
     .returning()
   await audit(db, { companyId, userId: user.id, entity: 'material_request', entityId: r.id, action: 'created', data: input })
@@ -229,8 +246,9 @@ export async function receiveDelivery(
   companyId: string,
   user: User,
   orderId: string,
-  input: { items: Array<{ orderItemId: string; quantity: number }>; problem?: boolean; notes?: string | null },
+  input: { items: Array<{ orderItemId: string; quantity: number }>; problem?: boolean; notes?: string | null; happenedAt?: string | null },
 ) {
+  const when = happenedAt(input.happenedAt)
   return db.transaction(async (tx) => {
     const [o] = await tx.select().from(purchaseOrders).where(and(eq(purchaseOrders.companyId, companyId), eq(purchaseOrders.id, orderId)))
     if (!o) throw notFound('Pedido')
@@ -247,7 +265,7 @@ export async function receiveDelivery(
     if (input.problem && !input.notes?.trim()) throw badRequest('SEM_DESCRICAO', 'Conte o que aconteceu com a entrega.')
     const [r] = await tx
       .insert(deliveryReceipts)
-      .values({ companyId, orderId, projectId: o.projectId, items, problem: !!input.problem, notes: input.notes, receivedById: user.id, receivedByName: user.name })
+      .values({ companyId, orderId, projectId: o.projectId, items, problem: !!input.problem, notes: input.notes, receivedById: user.id, receivedByName: user.name, receivedAt: when })
       .returning()
     let occurrenceId: string | null = null
     if (input.problem) {
@@ -264,6 +282,7 @@ export async function receiveDelivery(
           receiptId: r.id,
           createdById: user.id,
           createdByName: user.name,
+          createdAt: when,
         })
         .returning()
       occurrenceId = occ.id
@@ -287,13 +306,23 @@ export async function createOccurrence(
   companyId: string,
   user: User,
   projectId: string,
-  input: { type: (typeof occurrences.$inferInsert)['type']; severity: 'BAIXA' | 'MEDIA' | 'ALTA'; title: string; description?: string | null },
+  input: { type: (typeof occurrences.$inferInsert)['type']; severity: 'BAIXA' | 'MEDIA' | 'ALTA'; title: string; description?: string | null; happenedAt?: string | null },
 ) {
   const p = await ownProject(companyId, projectId)
   return db.transaction(async (tx) => {
     const [o] = await tx
       .insert(occurrences)
-      .values({ companyId, projectId, type: input.type, severity: input.severity, title: input.title.trim(), description: input.description, createdById: user.id, createdByName: user.name })
+      .values({
+        companyId,
+        projectId,
+        type: input.type,
+        severity: input.severity,
+        title: input.title.trim(),
+        description: input.description,
+        createdById: user.id,
+        createdByName: user.name,
+        createdAt: happenedAt(input.happenedAt),
+      })
       .returning()
     if (input.severity !== 'BAIXA') {
       await raiseAlert(tx, {
@@ -325,7 +354,11 @@ export async function resolveOccurrence(companyId: string, user: User, id: strin
   })
 }
 
-export async function updateStageProgress(companyId: string, user: User, stageId: string, input: { progress: number; note?: string | null }) {
+/**
+ * Atualiza o % da etapa. Se o registro veio da fila do celular e alguém já atualizou a etapa depois,
+ * guarda no histórico mas não sobrescreve o valor atual (vale o mais recente).
+ */
+export async function updateStageProgress(companyId: string, user: User, stageId: string, input: { progress: number; note?: string | null; happenedAt?: string | null }) {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ s: projectStages })
@@ -334,13 +367,15 @@ export async function updateStageProgress(companyId: string, user: User, stageId
       .where(and(eq(projectStages.id, stageId), eq(projects.companyId, companyId)))
     if (!row) throw notFound('Etapa')
     const progress = Math.max(0, Math.min(100, Math.round(input.progress)))
+    const when = happenedAt(input.happenedAt)
+    const applied = !row.s.updatedAt || row.s.updatedAt <= when
     const [u] = await tx
       .insert(stageUpdates)
-      .values({ stageId, projectId: row.s.projectId, fromProgress: row.s.progress, progress, note: input.note, userId: user.id, userName: user.name })
+      .values({ stageId, projectId: row.s.projectId, fromProgress: row.s.progress, progress, note: input.note, userId: user.id, userName: user.name, createdAt: when })
       .returning()
-    await tx.update(projectStages).set({ progress, updatedAt: new Date(), updatedByName: user.name }).where(eq(projectStages.id, stageId))
+    if (applied) await tx.update(projectStages).set({ progress, updatedAt: when, updatedByName: user.name }).where(eq(projectStages.id, stageId))
     await audit(tx, { companyId, userId: user.id, entity: 'project', entityId: row.s.projectId, action: 'stage_progress', data: { stage: row.s.name, from: row.s.progress, to: progress } })
-    return { stageUpdateId: u.id, progress }
+    return { stageUpdateId: u.id, progress: applied ? progress : row.s.progress, applied }
   })
 }
 
@@ -349,7 +384,7 @@ export async function addSitePhoto(
   companyId: string,
   user: User,
   projectId: string,
-  input: { url: string; caption?: string | null; occurrenceId?: string | null; receiptId?: string | null; stageUpdateId?: string | null },
+  input: { url: string; caption?: string | null; occurrenceId?: string | null; receiptId?: string | null; stageUpdateId?: string | null; happenedAt?: string | null },
 ) {
   await ownProject(companyId, projectId)
   // o vínculo precisa ser da mesma obra
@@ -367,7 +402,18 @@ export async function addSitePhoto(
   }
   const [f] = await db
     .insert(sitePhotos)
-    .values({ companyId, projectId, url: input.url, caption: input.caption, occurrenceId: input.occurrenceId, receiptId: input.receiptId, stageUpdateId: input.stageUpdateId, userId: user.id, userName: user.name })
+    .values({
+      companyId,
+      projectId,
+      url: input.url,
+      caption: input.caption,
+      occurrenceId: input.occurrenceId,
+      receiptId: input.receiptId,
+      stageUpdateId: input.stageUpdateId,
+      userId: user.id,
+      userName: user.name,
+      createdAt: happenedAt(input.happenedAt),
+    })
     .returning()
   return f
 }

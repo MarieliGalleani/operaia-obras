@@ -1,0 +1,16 @@
+{
+  "name": "OperaIA Obras",
+  "short_name": "OperaIA Obras",
+  "description": "App de obra: pedir material, receber entrega, fotos, ocorrências e avanço — funciona sem internet.",
+  "lang": "pt-BR",
+  "start_url": "/campo",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f5",
+  "theme_color": "#0B3B30",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

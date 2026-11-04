@@ -666,3 +666,53 @@ describe('app de obra (mestre)', () => {
     expect(alerts.some((a: any) => a.title.includes('Andaime'))).toBe(false)
   })
 })
+
+describe('app de obra sem internet (fila do celular)', () => {
+  let mestre = ''
+  beforeAll(async () => {
+    const [u] = await db.insert(users).values({ companyId: createdCompanies[0], name: 'Mestre Offline', email: `o${rnd()}@teste.com`, passwordHash: 'x', role: 'MESTRE' }).returning()
+    mestre = app.jwt.sign({ sub: u.id, companyId: u.companyId, role: 'MESTRE', name: u.name })
+  })
+  const post = (url: string, payload: unknown, key?: string) =>
+    app.inject({ method: 'POST', url, payload: payload as any, headers: { authorization: `Bearer ${mestre}`, ...(key && { 'idempotency-key': key }) } })
+
+  it('reenvio com a mesma chave não duplica e guarda a hora em que aconteceu', async () => {
+    const key = 'occ-' + randomBytes(8).toString('hex')
+    const when = new Date(Date.now() - 3 * 3600_000).toISOString()
+    const body = { type: 'CLIMA', severity: 'BAIXA', title: 'Chuva parou a obra (registrado sem sinal)', happenedAt: when }
+    const a = await post(`/api/field/projects/${projectB}/occurrences`, body, key)
+    const b = await post(`/api/field/projects/${projectB}/occurrences`, body, key)
+    expect(a.statusCode).toBe(201)
+    expect(b.statusCode).toBe(201)
+    expect(b.json().id).toBe(a.json().id)
+    expect(b.headers['idempotent-replay']).toBe('true')
+    const d = (await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)).json()
+    const mine = d.occurrences.filter((o: any) => o.title.includes('registrado sem sinal'))
+    expect(mine).toHaveLength(1)
+    expect(new Date(mine[0].createdAt).toISOString()).toBe(when)
+    // data no futuro vira "agora"
+    const fut = await post(`/api/field/projects/${projectB}/occurrences`, { ...body, title: 'Futuro', happenedAt: new Date(Date.now() + 86400_000).toISOString() })
+    expect(new Date(fut.json().createdAt).getTime()).toBeLessThanOrEqual(Date.now())
+  })
+
+  it('avanço antigo da fila não sobrescreve um mais novo', async () => {
+    const d = (await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)).json()
+    const stage = d.stages.find((s: any) => s.name === 'Estrutura')
+    const now = await post(`/api/field/stages/${stage.id}/progress`, { progress: 60 })
+    expect(now.json().applied).toBe(true)
+    const old = await post(`/api/field/stages/${stage.id}/progress`, { progress: 30, happenedAt: new Date(Date.now() - 2 * 3600_000).toISOString() }, 'stg-' + randomBytes(8).toString('hex'))
+    expect(old.json().applied).toBe(false)
+    expect(old.json().progress).toBe(60)
+    const after = (await api('GET', `/api/field/projects/${projectB}`, undefined, mestre)).json()
+    expect(after.stages.find((s: any) => s.id === stage.id).progress).toBe(60)
+    expect(after.stageUpdates.some((u: any) => u.progress === 30)).toBe(true)
+  })
+
+  it('erro de validação não fica gravado na chave', async () => {
+    const key = 'bad-' + randomBytes(8).toString('hex')
+    const bad = await post(`/api/field/projects/${projectB}/occurrences`, { type: 'CLIMA', severity: 'BAIXA', title: 'x' }, key)
+    expect(bad.statusCode).toBe(400)
+    const ok = await post(`/api/field/projects/${projectB}/occurrences`, { type: 'CLIMA', severity: 'BAIXA', title: 'Agora com título' }, key)
+    expect(ok.statusCode).toBe(201)
+  })
+})

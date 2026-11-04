@@ -43,6 +43,13 @@
       "when": 1793797690069,
       "tag": "0005_app_de_obra",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793799074185,
+      "tag": "0006_sem_internet",
+      "breakpoints": true
     }
   ]
 }

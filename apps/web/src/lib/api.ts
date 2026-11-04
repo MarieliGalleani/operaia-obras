@@ -52,7 +52,13 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     headers['content-type'] = 'application/json'
     payload = JSON.stringify(body)
   }
-  const res = await fetch(url, { method, headers, body: payload })
+  let res: Response
+  try {
+    res = await fetch(url, { method, headers, body: payload })
+  } catch {
+    // sem internet (ou servidor inacessível): status 0, para o app de obra usar a cópia guardada
+    throw new ApiError(0, 'SEM_INTERNET', 'Sem internet. Tente de novo quando o sinal voltar.')
+  }
   if (res.status === 401 && !url.endsWith('/auth/login')) onUnauthorized?.()
   const text = await res.text()
   const data = text ? JSON.parse(text) : null

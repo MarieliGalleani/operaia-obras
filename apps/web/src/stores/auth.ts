@@ -1,6 +1,24 @@
 import { defineStore } from 'pinia'
-import { api, getToken, setToken } from '@/lib/api'
+import { ApiError, api, getToken, setToken } from '@/lib/api'
 import { DEMO } from '@/lib/demo'
+import { clearOfflineCache, setOfflineUser } from '@/lib/offline'
+
+const ME_KEY = 'operaia-obras:me'
+const readMe = (): Me | null => {
+  try {
+    return JSON.parse(localStorage.getItem(ME_KEY) ?? 'null')
+  } catch {
+    return null
+  }
+}
+const writeMe = (me: Me | null) => {
+  try {
+    if (me) localStorage.setItem(ME_KEY, JSON.stringify(me))
+    else localStorage.removeItem(ME_KEY)
+  } catch {
+    /* navegação privada */
+  }
+}
 
 interface Me {
   user: { id: string; name: string; email: string; role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'; isPlatformOwner?: boolean }
@@ -30,10 +48,21 @@ export const useAuth = defineStore('auth', {
       setToken(res.token)
       this.token = res.token
       this.me = { user: res.user, company: res.company, impersonating: false }
+      writeMe(this.me)
+      setOfflineUser(this.me.user.id)
     },
     async load(force = false) {
       if (!this.token || (this.me && !force)) return
-      this.me = await api.get<Me>('/api/auth/me')
+      try {
+        this.me = await api.get<Me>('/api/auth/me')
+        writeMe(this.me)
+      } catch (e) {
+        // sem internet: segue com a última identidade conhecida (o app de obra funciona com a fila)
+        const cached = readMe()
+        if (e instanceof ApiError && e.status === 0 && cached) this.me = cached
+        else throw e
+      }
+      setOfflineUser(this.me.user.id)
     },
     /** Dona da plataforma: entra numa construtora para dar suporte */
     async enterCompany(companyId: string) {
@@ -52,6 +81,9 @@ export const useAuth = defineStore('auth', {
       setToken(null)
       this.token = null
       this.me = null
+      writeMe(null)
+      setOfflineUser(null)
+      void clearOfflineCache()
     },
   },
 })

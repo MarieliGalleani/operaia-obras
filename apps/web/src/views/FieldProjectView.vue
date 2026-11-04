@@ -3,12 +3,12 @@
  * App de obra: tudo o que o mestre faz numa obra, em uma tela de celular.
  * Pedir material · Receber entrega · Foto · Ocorrência · Avanço físico. Sem valores em dinheiro.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
-import { api } from '@/lib/api'
 import { date, ymd } from '@/lib/format'
-import { uploadSitePhoto } from '@/lib/image'
+import { shrinkImage } from '@/lib/image'
+import { cachedGet, discardItem, patchCache, queue, retryItem, submit, syncNow, type SubmitResult } from '@/lib/offline'
 import { toast, toastError } from '@/lib/toast'
 
 type Item = { description: string; unit: string | null; quantity: number }
@@ -65,16 +65,51 @@ const id = computed(() => String(route.params.id))
 const data = ref<FieldData | null>(null)
 const tab = ref<string>((route.query.aba as string) || 'entregas')
 const busy = ref(false)
+const snapshot = ref<{ offline: boolean; at: number } | null>(null)
+const url = computed(() => `/api/field/projects/${id.value}`)
 
 async function load() {
   try {
-    data.value = await api.get<FieldData>(`/api/field/projects/${id.value}`)
+    const r = await cachedGet<FieldData>(url.value)
+    data.value = r.data
+    snapshot.value = { offline: r.offline, at: r.at }
   } catch (e) {
     toastError(e)
-    router.replace('/campo')
+    if (!data.value) router.replace('/campo')
   }
 }
 onMounted(load)
+// a fila enviou registros: recarrega para mostrar o que o servidor gravou
+watch(() => queue.lastSyncAt, () => load())
+
+const pending = computed(() => queue.items.filter((i) => i.projectId === id.value))
+const KIND_ICON: Record<string, string> = {
+  request: 'mdi-cart-plus',
+  receive: 'mdi-truck-check-outline',
+  occurrence: 'mdi-alert-octagon-outline',
+  resolve: 'mdi-check',
+  stage: 'mdi-progress-check',
+  photo: 'mdi-camera-outline',
+}
+/** Mensagem depois de registrar: enviado agora ou guardado no celular. */
+function done(r: SubmitResult, okMsg: string, okColor: 'success' | 'warning' | 'info' = 'success') {
+  if (r.sent) toast(okMsg, okColor)
+  else toast('Sem internet: ficou guardado no celular e vai sozinho quando o sinal voltar.', 'info')
+}
+/** Foto ligada a um registro: se o registro já foi, usa o id dele; se ficou na fila, a foto espera por ele. */
+async function sendLinkedPhoto(file: File | null, parent: SubmitResult, field: 'receiptId' | 'occurrenceId' | 'stageUpdateId', caption: string) {
+  if (!file) return
+  const serverId = parent.sent ? (parent.data?.[field === 'stageUpdateId' ? 'stageUpdateId' : 'id'] as string | undefined) : undefined
+  await submit({
+    projectId: id.value,
+    kind: 'photo',
+    label: `Foto: ${caption}`,
+    url: `${url.value}/photos`,
+    body: { caption, ...(serverId && { [field]: serverId }) },
+    photo: await shrinkImage(file),
+    ...(!serverId && { refs: { [field]: parent.localId } }),
+  })
+}
 
 const openDeliveries = computed(() => data.value?.deliveries ?? [])
 const openOcc = computed(() => data.value?.occurrences.filter((o) => o.status === 'ABERTA') ?? [])
@@ -103,10 +138,6 @@ function picked(e: Event) {
   if (f && onPicked) onPicked(f)
 }
 const preview = (f: File | null) => (f ? URL.createObjectURL(f) : '')
-async function sendPhoto(file: File | null, meta: Parameters<typeof uploadSitePhoto>[3]) {
-  if (!file) return
-  await uploadSitePhoto(api.post, id.value, file, meta)
-}
 
 // ------------------------------------------------------------ pedir material
 const reqOpen = ref(false)
@@ -120,16 +151,18 @@ const reqValid = computed(() => reqForm.value.items.some((i) => i.description.tr
 async function sendRequest() {
   busy.value = true
   try {
-    await api.post(`/api/field/projects/${id.value}/requests`, {
-      items: reqForm.value.items.filter((i) => i.description.trim() && num(i.quantity) > 0).map((i) => ({ description: i.description, unit: i.unit || null, quantity: num(i.quantity) })),
-      neededBy: reqForm.value.neededBy || null,
-      urgent: reqForm.value.urgent,
-      notes: reqForm.value.notes || null,
+    const items = reqForm.value.items.filter((i) => i.description.trim() && num(i.quantity) > 0).map((i) => ({ description: i.description, unit: i.unit || null, quantity: num(i.quantity) }))
+    const r = await submit({
+      projectId: id.value,
+      kind: 'request',
+      label: `Pedido de material: ${items.map((i) => `${qty(i.quantity)} ${i.unit ?? ''} ${i.description.toLowerCase()}`).join(', ')}`,
+      url: `${url.value}/requests`,
+      body: { items, neededBy: reqForm.value.neededBy || null, urgent: reqForm.value.urgent, notes: reqForm.value.notes || null },
     })
     reqOpen.value = false
-    toast('Pedido de material enviado ao escritório')
+    done(r, 'Pedido de material enviado ao escritório')
     tab.value = 'pedidos'
-    load()
+    if (r.sent) load()
   } catch (e) {
     toastError(e)
   } finally {
@@ -160,16 +193,19 @@ async function sendReceive() {
   if (!recOrder.value) return
   busy.value = true
   try {
-    const r = await api.post<{ id: string; occurrenceId: string | null }>(`/api/field/orders/${recOrder.value.id}/receive`, {
-      items: recOrder.value.items.map((i) => ({ orderItemId: i.id, quantity: num(recQty.value[i.id] ?? 0) })),
-      problem: recProblem.value,
-      notes: recNotes.value || null,
+    const o = recOrder.value
+    const r = await submit({
+      projectId: id.value,
+      kind: 'receive',
+      label: `Entrega ${o.code} (${o.supplierName})${recProblem.value ? ' com problema' : ''}`,
+      url: `/api/field/orders/${o.id}/receive`,
+      body: { items: o.items.map((i) => ({ orderItemId: i.id, quantity: num(recQty.value[i.id] ?? 0) })), problem: recProblem.value, notes: recNotes.value || null },
     })
-    await sendPhoto(recPhoto.value, { receiptId: r.id, caption: `Entrega ${recOrder.value.code}` })
+    await sendLinkedPhoto(recPhoto.value, r, 'receiptId', `Entrega ${o.code}`)
     recOpen.value = false
-    toast(recProblem.value ? 'Entrega registrada com problema: o escritório foi avisado' : 'Entrega conferida')
+    done(r, recProblem.value ? 'Entrega registrada com problema: o escritório foi avisado' : 'Entrega conferida', recProblem.value ? 'warning' : 'success')
     tab.value = 'entregas'
-    load()
+    if (r.sent) load()
   } catch (e) {
     toastError(e)
   } finally {
@@ -191,11 +227,19 @@ function takePhoto() {
 async function savePhoto() {
   busy.value = true
   try {
-    await sendPhoto(photoFile.value, { caption: photoCaption.value || undefined })
+    if (!photoFile.value) return
+    const r = await submit({
+      projectId: id.value,
+      kind: 'photo',
+      label: `Foto${photoCaption.value ? `: ${photoCaption.value}` : ''}`,
+      url: `${url.value}/photos`,
+      body: { caption: photoCaption.value || undefined },
+      photo: await shrinkImage(photoFile.value),
+    })
     photoOpen.value = false
-    toast('Foto salva no diário da obra')
+    done(r, 'Foto salva no diário da obra')
     tab.value = 'fotos'
-    load()
+    if (r.sent) load()
   } catch (e) {
     toastError(e)
   } finally {
@@ -223,12 +267,18 @@ function openOccurrence() {
 async function sendOccurrence() {
   busy.value = true
   try {
-    const o = await api.post<{ id: string }>(`/api/field/projects/${id.value}/occurrences`, { ...occForm.value, description: occForm.value.description || null })
-    await sendPhoto(occPhoto.value, { occurrenceId: o.id, caption: occForm.value.title })
+    const r = await submit({
+      projectId: id.value,
+      kind: 'occurrence',
+      label: `Ocorrência: ${occForm.value.title}`,
+      url: `${url.value}/occurrences`,
+      body: { ...occForm.value, description: occForm.value.description || null },
+    })
+    await sendLinkedPhoto(occPhoto.value, r, 'occurrenceId', occForm.value.title)
     occOpen.value = false
-    toast(occForm.value.severity === 'BAIXA' ? 'Ocorrência registrada' : 'Ocorrência registrada: o escritório foi avisado')
+    done(r, occForm.value.severity === 'BAIXA' ? 'Ocorrência registrada' : 'Ocorrência registrada: o escritório foi avisado')
     tab.value = 'ocorrencias'
-    load()
+    if (r.sent) load()
   } catch (e) {
     toastError(e)
   } finally {
@@ -241,10 +291,16 @@ async function resolve() {
   if (!resolving.value) return
   busy.value = true
   try {
-    await api.post(`/api/field/occurrences/${resolving.value.id}/resolve`, { resolution: resolution.value })
+    const r = await submit({
+      projectId: id.value,
+      kind: 'resolve',
+      label: `Resolvida: ${resolving.value.title}`,
+      url: `/api/field/occurrences/${resolving.value.id}/resolve`,
+      body: { resolution: resolution.value },
+    })
     resolving.value = null
-    toast('Ocorrência resolvida')
-    load()
+    done(r, 'Ocorrência resolvida')
+    if (r.sent) load()
   } catch (e) {
     toastError(e)
   } finally {
@@ -269,11 +325,30 @@ async function saveStage() {
   if (!stage.value) return
   busy.value = true
   try {
-    const r = await api.post<{ stageUpdateId: string }>(`/api/field/stages/${stage.value.id}/progress`, { progress: stageValue.value, note: stageNote.value || null })
-    await sendPhoto(stagePhoto.value, { stageUpdateId: r.stageUpdateId, caption: `${stage.value.name}: ${stageValue.value}%` })
+    const s = stage.value
+    const value = stageValue.value
+    const r = await submit({
+      projectId: id.value,
+      kind: 'stage',
+      label: `${s.name}: ${s.progress}% → ${value}%`,
+      url: `/api/field/stages/${s.id}/progress`,
+      body: { progress: value, note: stageNote.value || null },
+    })
+    await sendLinkedPhoto(stagePhoto.value, r, 'stageUpdateId', `${s.name}: ${value}%`)
     stageOpen.value = false
-    toast(`${stage.value.name}: ${stageValue.value}%`)
-    load()
+    if (r.sent && r.data?.applied === false) toast('Alguém já atualizou esta etapa depois; o seu registro ficou no histórico.', 'info')
+    else done(r, `${s.name}: ${value}%`)
+    if (r.sent) load()
+    else {
+      // sem internet: mostra já o novo % (na tela e na cópia guardada)
+      const apply = (d: FieldData) => {
+        const stages = d.stages.map((x) => (x.id === s.id ? { ...x, progress: value } : x))
+        const w = stages.reduce((a, x) => a + x.weight, 0)
+        return { ...d, stages, physicalPct: w ? Math.round((stages.reduce((a, x) => a + x.weight * x.progress, 0) / w) * 100) / 100 : d.physicalPct }
+      }
+      if (data.value) data.value = apply(data.value)
+      await patchCache<FieldData>(url.value, apply)
+    }
   } catch (e) {
     toastError(e)
   } finally {
@@ -306,6 +381,31 @@ const ACTIONS = computed(() => [
           <span class="text-caption font-weight-bold">{{ data.physicalPct == null ? '—' : `${Math.round(data.physicalPct)}%` }}</span>
         </v-progress-circular>
       </div>
+
+      <v-alert v-if="snapshot?.offline" type="warning" variant="tonal" density="compact" icon="mdi-wifi-off" class="mb-3">
+        Sem internet. Mostrando os dados de {{ when(new Date(snapshot.at).toISOString()) }}. Pode registrar normalmente: fica guardado no celular e vai sozinho quando o sinal voltar.
+      </v-alert>
+      <v-card v-if="pending.length" class="pa-3 mb-3 queue-card">
+        <div class="d-flex align-center ga-2 mb-1">
+          <v-icon :color="queue.syncing ? 'info' : 'primary'" :class="{ spin: queue.syncing }">{{ queue.syncing ? 'mdi-sync' : 'mdi-cloud-upload-outline' }}</v-icon>
+          <b class="text-body-2">Guardado no celular ({{ pending.length }})</b>
+          <v-spacer />
+          <v-btn size="small" variant="text" :loading="queue.syncing" @click="syncNow()">Enviar agora</v-btn>
+        </div>
+        <div v-for="i in pending" :key="i.id" class="queue-row">
+          <v-icon size="18" :color="i.status === 'ERRO' ? 'error' : 'grey'">{{ KIND_ICON[i.kind] }}</v-icon>
+          <div class="flex-grow-1" style="min-width: 0">
+            <div class="text-body-2 text-truncate">{{ i.label }}</div>
+            <div class="text-caption" :class="i.status === 'ERRO' ? 'text-error' : 'muted'">
+              {{ when(i.happenedAt) }} · {{ i.status === 'ERRO' ? `não aceito: ${i.error}` : 'aguardando internet' }}
+            </div>
+          </div>
+          <template v-if="i.status === 'ERRO'">
+            <v-btn size="x-small" variant="text" @click="retryItem(i.id)">Tentar de novo</v-btn>
+            <v-btn size="x-small" variant="text" color="error" @click="discardItem(i.id)">Descartar</v-btn>
+          </template>
+        </div>
+      </v-card>
 
       <div class="actions mb-4">
         <button v-for="a in ACTIONS" :key="a.key" type="button" class="action" @click="a.run()">
@@ -570,6 +670,24 @@ const ACTIONS = computed(() => [
 <style scoped>
 .field-wrap {
   max-width: 760px;
+}
+.queue-card {
+  border-left: 4px solid rgb(var(--v-theme-info));
+}
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .actions {
   display: grid;

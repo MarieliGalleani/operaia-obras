@@ -11,6 +11,7 @@ import { db } from './db/client.js'
 import {
   COST_CATEGORIES,
   alerts,
+  idempotencyKeys,
   auditLogs,
   companies,
   documents,
@@ -174,6 +175,27 @@ export async function registerRoutes(app: FastifyInstance) {
       if (u?.role === 'MESTRE' && !req.url.startsWith('/api/field/') && !req.url.startsWith('/api/auth/')) {
         return reply.code(403).send({ code: 'SEM_PERMISSAO', message: 'Seu perfil acessa só o app de obra.' })
       }
+    })
+    // App de obra: reenvio com a mesma Idempotency-Key devolve a resposta já gravada
+    r.addHook('preHandler', async (req, reply) => {
+      const key = req.headers['idempotency-key']
+      if (req.method !== 'POST' || !req.url.startsWith('/api/field/') || typeof key !== 'string') return
+      if (!/^[\w-]{8,80}$/.test(key)) return reply.code(400).send({ code: 'CHAVE_INVALIDA', message: 'Idempotency-Key inválida.' })
+      const [hit] = await db.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.companyId, me(req).companyId), eq(idempotencyKeys.key, key)))
+      if (hit) return reply.code(hit.statusCode).header('idempotent-replay', 'true').send(hit.response)
+    })
+    r.addHook('onSend', async (req, reply, payload) => {
+      const key = req.headers['idempotency-key']
+      if (req.method !== 'POST' || !req.url.startsWith('/api/field/') || typeof key !== 'string' || reply.getHeader('idempotent-replay')) return payload
+      if (reply.statusCode >= 300 || typeof payload !== 'string' || !/^[\w-]{8,80}$/.test(key)) return payload
+      let response: unknown = null
+      try {
+        response = JSON.parse(payload)
+      } catch {
+        return payload
+      }
+      await db.insert(idempotencyKeys).values({ companyId: me(req).companyId, key, statusCode: reply.statusCode, response }).onConflictDoNothing()
+      return payload
     })
     await r.register(async (p) => registerPlatformRoutes(p))
 
@@ -466,16 +488,18 @@ export async function registerRoutes(app: FastifyInstance) {
     const fieldItems = z.array(z.object({ description: z.string().min(2).max(200), unit: z.string().max(10).optional().nullable(), quantity: z.number().positive() })).min(1).max(50)
     const uid = z.object({ id: z.string().uuid() })
     const fieldUser = (req: FastifyRequest) => ({ id: me(req).sub, name: me(req).name })
+    /** hora em que aconteceu no canteiro (ISO); a API limita a agora e a 30 dias atrás */
+    const happenedAt = z.string().datetime({ offset: true }).optional().nullable()
 
     r.get('/api/field/projects', async (req) => fieldProjects(me(req).companyId))
     r.get('/api/field/projects/:id', async (req) => fieldProject(me(req).companyId, uid.parse(req.params).id))
     r.post('/api/field/projects/:id/requests', async (req, reply) => {
-      const body = z.object({ items: fieldItems, neededBy: ymd.optional().nullable(), urgent: z.boolean().optional(), notes: z.string().max(1000).optional().nullable() }).parse(req.body)
+      const body = z.object({ items: fieldItems, neededBy: ymd.optional().nullable(), urgent: z.boolean().optional(), notes: z.string().max(1000).optional().nullable(), happenedAt }).parse(req.body)
       return reply.code(201).send(await createMaterialRequest(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body))
     })
     r.post('/api/field/orders/:id/receive', async (req, reply) => {
       const body = z
-        .object({ items: z.array(z.object({ orderItemId: z.string().uuid(), quantity: z.number().nonnegative() })).max(200), problem: z.boolean().optional(), notes: z.string().max(1000).optional().nullable() })
+        .object({ items: z.array(z.object({ orderItemId: z.string().uuid(), quantity: z.number().nonnegative() })).max(200), problem: z.boolean().optional(), notes: z.string().max(1000).optional().nullable(), happenedAt })
         .parse(req.body)
       return reply.code(201).send(await receiveDelivery(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body))
     })
@@ -486,6 +510,7 @@ export async function registerRoutes(app: FastifyInstance) {
           severity: z.enum(['BAIXA', 'MEDIA', 'ALTA']),
           title: z.string().min(3).max(140),
           description: z.string().max(2000).optional().nullable(),
+          happenedAt,
         })
         .parse(req.body)
       return reply.code(201).send(await createOccurrence(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body))
@@ -495,7 +520,7 @@ export async function registerRoutes(app: FastifyInstance) {
       return resolveOccurrence(me(req).companyId, fieldUser(req), uid.parse(req.params).id, resolution)
     })
     r.post('/api/field/stages/:id/progress', async (req) => {
-      const body = z.object({ progress: z.number().min(0).max(100), note: z.string().max(1000).optional().nullable() }).parse(req.body)
+      const body = z.object({ progress: z.number().min(0).max(100), note: z.string().max(1000).optional().nullable(), happenedAt }).parse(req.body)
       return updateStageProgress(me(req).companyId, fieldUser(req), uid.parse(req.params).id, body)
     })
     /** Foto da obra: multipart com o arquivo e, opcionalmente, legenda e vínculo (ocorrência, entrega, avanço). */
@@ -513,7 +538,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const kind = imageKind(content)
       if (!kind) throw badRequest('IMAGEM_INVALIDA', 'Envie uma foto em JPG, PNG ou WEBP.')
       const ref = z
-        .object({ caption: z.string().max(300).optional(), occurrenceId: z.string().uuid().optional(), receiptId: z.string().uuid().optional(), stageUpdateId: z.string().uuid().optional() })
+        .object({ caption: z.string().max(300).optional(), occurrenceId: z.string().uuid().optional(), receiptId: z.string().uuid().optional(), stageUpdateId: z.string().uuid().optional(), happenedAt })
         .parse(Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== '')))
       await mkdir(MEDIA_DIR, { recursive: true })
       const file = `${randomBytes(16).toString('hex')}.${kind}`

@@ -6,6 +6,7 @@ import AppLogo from './components/AppLogo.vue'
 import { DEMO } from './lib/demo'
 import { cnpj } from './lib/format'
 import { api } from './lib/api'
+import { net, queue, syncNow } from './lib/offline'
 import { toast, toastError, toastState } from './lib/toast'
 import { useAuth } from './stores/auth'
 
@@ -106,14 +107,28 @@ function logout() {
 
       <v-app-bar flat height="64" color="surface" class="appbar">
         <v-app-bar-nav-icon v-if="!mdAndUp" @click="drawer = !drawer" />
-        <div class="d-flex align-center ml-4">
-          <v-icon color="primary" class="mr-2">mdi-domain</v-icon>
-          <div>
-            <div class="font-weight-bold" style="line-height: 1.1">{{ auth.me?.company.name }}</div>
-            <div class="text-caption muted" style="line-height: 1.1">{{ cnpj(auth.me?.company.cnpj) }}</div>
+        <div class="d-flex align-center ml-4" style="min-width: 0">
+          <v-icon v-if="mdAndUp" color="primary" class="mr-2">mdi-domain</v-icon>
+          <div style="min-width: 0">
+            <div class="font-weight-bold text-truncate" style="line-height: 1.1">{{ auth.me?.company.name }}</div>
+            <div v-if="mdAndUp" class="text-caption muted" style="line-height: 1.1">{{ cnpj(auth.me?.company.cnpj) }}</div>
           </div>
         </div>
         <v-spacer />
+        <v-chip v-if="!net.online" color="warning" variant="flat" size="small" class="mr-2 flex-shrink-0" :aria-label="'Sem internet'">
+          <v-icon size="16" :class="{ 'mr-1': mdAndUp }">mdi-wifi-off</v-icon><template v-if="mdAndUp">Sem internet</template>
+        </v-chip>
+        <v-chip
+          v-if="queue.items.length"
+          :color="queue.items.some((i) => i.status === 'ERRO') ? 'error' : 'info'"
+          variant="tonal"
+          size="small"
+          class="mr-2 flex-shrink-0"
+          :aria-label="`${queue.items.length} registro(s) guardado(s) no celular`"
+          @click="syncNow()"
+        >
+          <v-icon size="16" class="mr-1">{{ queue.syncing ? 'mdi-sync' : 'mdi-cloud-upload-outline' }}</v-icon>{{ queue.items.length }}<template v-if="mdAndUp">&nbsp;na fila</template>
+        </v-chip>
         <v-text-field
           v-if="mdAndUp && !auth.isMestre"
           v-model="search"

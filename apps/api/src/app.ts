@@ -106,7 +106,15 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   // Em produção a API também entrega as telas (build do front), num único processo/porta
   const webDist = process.env.WEB_DIST ? path.resolve(process.env.WEB_DIST) : null
   if (webDist && existsSync(path.join(webDist, 'index.html'))) {
-    await app.register(fastifyStatic, { root: webDist, wildcard: false, maxAge: '1h' })
+    await app.register(fastifyStatic, {
+      root: webDist,
+      wildcard: false,
+      maxAge: '1h',
+      // o service worker (app de obra sem internet) precisa ser conferido a cada abertura
+      setHeaders: (res, file) => {
+        if (file.endsWith('sw.js') || file.endsWith('manifest.webmanifest')) res.setHeader('Cache-Control', 'no-cache')
+      },
+    })
     app.setNotFoundHandler((req, reply) => {
       if (req.method === 'GET' && !req.url.startsWith('/api/')) return reply.header('Cache-Control', 'no-cache').sendFile('index.html')
       return reply.code(404).send({ code: 'NOT_FOUND', message: 'Rota não encontrada' })

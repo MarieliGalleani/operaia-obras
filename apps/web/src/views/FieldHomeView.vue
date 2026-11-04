@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /** App de obra: o mestre escolhe a obra. Pensado para celular, com botões grandes. */
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ProjectThumb from '@/components/ProjectThumb.vue'
-import { api } from '@/lib/api'
+import { date } from '@/lib/format'
+import { cachedGet, queue } from '@/lib/offline'
 import { toastError } from '@/lib/toast'
 import { useAuth } from '@/stores/auth'
 
@@ -26,15 +27,21 @@ const router = useRouter()
 const auth = useAuth()
 const rows = ref<FieldProjectRow[]>([])
 const loading = ref(true)
-onMounted(async () => {
+const offlineAt = ref<number | null>(null)
+async function load() {
   try {
-    rows.value = await api.get<FieldProjectRow[]>('/api/field/projects')
+    const r = await cachedGet<FieldProjectRow[]>('/api/field/projects')
+    rows.value = r.data
+    offlineAt.value = r.offline ? r.at : null
   } catch (e) {
     toastError(e)
   } finally {
     loading.value = false
   }
-})
+}
+onMounted(load)
+watch(() => queue.lastSyncAt, load)
+const queued = (projectId: string) => queue.items.filter((i) => i.projectId === projectId).length
 const firstName = () => auth.me?.user.name.split(' ')[0] ?? ''
 const fmt = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
 </script>
@@ -46,6 +53,9 @@ const fmt = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
       <div class="page-subtitle">Escolha a obra para pedir material, receber entrega, tirar foto, registrar ocorrência ou atualizar o avanço.</div>
     </div>
 
+    <v-alert v-if="offlineAt" type="warning" variant="tonal" density="compact" icon="mdi-wifi-off" class="mb-3">
+      Sem internet. Mostrando os dados de {{ date(new Date(offlineAt).toISOString()) }} {{ new Date(offlineAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }}. O que você registrar fica guardado no celular.
+    </v-alert>
     <div v-if="loading" class="pa-8 d-flex justify-center"><v-progress-circular indeterminate color="primary" /></div>
     <v-card v-else-if="!rows.length" class="pa-8 text-center muted">Nenhuma obra em andamento.</v-card>
 
@@ -66,6 +76,7 @@ const fmt = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
         <v-chip v-else-if="p.expectedDeliveries" size="small" variant="tonal" prepend-icon="mdi-truck-outline">{{ p.expectedDeliveries }} entrega(s) a caminho</v-chip>
         <v-chip v-if="p.highOccurrences" size="small" color="error" variant="tonal" prepend-icon="mdi-alert-octagon-outline">{{ p.highOccurrences }} ocorrência(s) grave(s)</v-chip>
         <v-chip v-else-if="p.openOccurrences" size="small" color="warning" variant="tonal" prepend-icon="mdi-alert-outline">{{ p.openOccurrences }} ocorrência(s) aberta(s)</v-chip>
+        <v-chip v-if="queued(p.id)" size="small" color="info" variant="flat" prepend-icon="mdi-cloud-upload-outline">{{ queued(p.id) }} guardado(s) no celular</v-chip>
         <v-chip v-if="p.openRequests" size="small" variant="tonal" prepend-icon="mdi-cart-outline">{{ p.openRequests }} pedido(s) de material aguardando</v-chip>
         <span v-if="!p.expectedDeliveries && !p.openOccurrences && !p.openRequests" class="text-caption muted">Nada pendente</span>
       </div>

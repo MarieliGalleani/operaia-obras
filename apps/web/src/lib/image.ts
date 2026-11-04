@@ -20,16 +20,3 @@ export async function shrinkImage(file: File, max = 1600, quality = 0.82): Promi
     return file
   }
 }
-
-/** Envia a foto para a obra, com legenda e vínculo opcionais (ocorrência, entrega ou avanço). */
-export async function uploadSitePhoto(
-  post: <T>(url: string, body: FormData) => Promise<T>,
-  projectId: string,
-  file: File,
-  meta: { caption?: string; occurrenceId?: string; receiptId?: string; stageUpdateId?: string } = {},
-) {
-  const fd = new FormData()
-  for (const [k, v] of Object.entries(meta)) if (v) fd.append(k, v)
-  fd.append('file', await shrinkImage(file), 'foto.jpg')
-  return post<{ id: string; url: string }>(`/api/field/projects/${projectId}/photos`, fd)
-}

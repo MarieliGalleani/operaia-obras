@@ -23,7 +23,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - [ ] 10. Leitura de nota em PDF ou foto (IA sugere, humano confirma)
 - [x] 11. Tela de Compras: pedido antes da nota e conferência pedido × nota (vínculo pelo nº do pedido na nota, divergência de preço/quantidade, entrega parcial, pontualidade do fornecedor)
 - [x] 12. App de obra do mestre: pedir material, aprovar entrega, fotos, ocorrências, avanço físico (perfil Mestre de obra, tela de celular em /campo, físico × financeiro na obra)
-- [ ] 13. Funcionar sem internet (junto com o app de obra)
+- [x] 13. Funcionar sem internet (junto com o app de obra): app abre sem sinal, fila no celular com fotos, envio automático sem duplicar, hora real do registro
 
 ### Muito difícil / depende de terceiros
 - [ ] 14. Integração Conta Azul
@@ -57,5 +57,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - Perfil Mestre de obra só acessa o app de obra e nunca vê valores em dinheiro (bloqueado na API, não só na tela).
 - Recebimento na obra é registro separado da nota: a conferência passa a ser pedido × nota × o que chegou no canteiro.
 - Ocorrência de gravidade alta vira alerta crítico; média vira alerta de atenção; baixa fica só no diário.
+- Sem internet: só o app de obra funciona offline (pedir material, receber entrega, foto, ocorrência, avanço). Aprovação de nota, pagamento e o resto do escritório continuam só online.
+- Fila do celular usa Idempotency-Key: reenvio nunca duplica. O registro guarda a hora em que aconteceu (limitada a agora e a 30 dias atrás); avanço antigo da fila não sobrescreve um mais novo.
 - Fotos do canteiro são reduzidas no celular (máx. 1600 px, JPEG) antes de enviar.
 - Nota só é vinculada sozinha ao pedido quando traz o número dele (xPed, ex.: PC-0012). Sem número, o sistema apenas sugere o pedido.

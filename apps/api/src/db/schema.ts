@@ -522,6 +522,24 @@ export const sitePhotos = pgTable(
   (t) => [index('site_photos_project_idx').on(t.projectId, t.createdAt)],
 )
 
+/**
+ * Registros enviados pelo app de obra com "Idempotency-Key": se o celular reenviar
+ * (internet caiu antes da resposta chegar), devolve a mesma resposta sem gravar de novo.
+ */
+export const idempotencyKeys = pgTable(
+  'idempotency_keys',
+  {
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    statusCode: integer('status_code').notNull(),
+    response: jsonb('response'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('idempotency_keys_uq').on(t.companyId, t.key)],
+)
+
 export type CostCategory = (typeof costCategory.enumValues)[number]
 export const COST_CATEGORIES = costCategory.enumValues
 

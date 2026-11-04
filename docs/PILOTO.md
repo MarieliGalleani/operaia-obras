@@ -20,7 +20,8 @@
 - [ ] **Quem usa:**
   - 1 admin (dono ou diretor);
   - 1 a 2 do financeiro;
-  - gestores de obra, se quiserem.
+  - gestores de obra, se quiserem;
+  - mestres de obra, se forem usar o app de obra (perfil **Mestre de obra**: só o app, sem valores).
 
 ## Dia da implantação (1 a 2 horas)
 
@@ -38,6 +39,14 @@
    - No Gmail, gerar uma *senha de app*.
    - Conectar em **Configurações → E-mail de notas** (ou você, pela Plataforma). O sistema testa na hora.
    - Se preferirem, começam arrastando os XMLs na tela.
+4. **App de obra (se usarem):**
+   - Em cada obra, **Obras → (obra) → Cadastrar etapas** (já vem uma sugestão de 8 etapas com peso).
+   - Cadastre o mestre em **Configurações → Equipe** com o perfil **Mestre de obra**.
+   - No celular do mestre: abrir o endereço do sistema **com internet**, entrar, abrir cada obra uma vez e usar
+     **"Adicionar à tela inicial"** (Android: menu do Chrome; iPhone: botão compartilhar do Safari).
+   - Sem sinal no canteiro o app abre com os últimos dados; o que ele registrar fica guardado no celular e vai
+     sozinho quando o sinal voltar (o ícone de nuvem no topo mostra quantos estão na fila).
+   - Combine com ele: abrir o app com internet pelo menos uma vez por dia. Se ele sair do sistema (logout) com registros na fila, eles ficam no celular e só vão quando ele entrar de novo.
 4. **Combinar com os fornecedores principais:** colocar a obra na nota. É o que mais aumenta o acerto automático. Mensagem sugerida:
    > "A partir de agora, por favor informe nas Informações Complementares da NF-e: **Obra: OBR-001 – Residencial Aurora** (ou o código da obra do pedido) e envie o XML para notas@construtora.com.br."
 5. **Carga inicial:** importar os XMLs dos últimos 30 a 60 dias, para os números da Visão Geral fazerem sentido desde o primeiro dia.
