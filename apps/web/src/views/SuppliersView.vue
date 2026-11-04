@@ -22,6 +22,14 @@ interface Supplier {
   avgPaymentTermDays: number | null
   materials: number
   topItem: { description: string; unit: string | null; lastPrice: number; lastDate: string | null; perMeasurement: boolean; variationPct: number | null } | null
+  delivery: Delivery | null
+}
+interface Delivery {
+  deliveries: number
+  onTimePct: number | null
+  avgDelayDays: number | null
+  avgLeadDays: number | null
+  lateOpenOrders: number
 }
 interface Material {
   key: string
@@ -55,7 +63,8 @@ const price = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curr
 const varColor = (v: number | null) => (v == null ? undefined : v >= 15 ? 'error' : v >= 5 ? 'warning' : v <= -5 ? 'success' : undefined)
 const varLabel = (v: number | null) => (v == null ? '' : `${v > 0 ? '+' : ''}${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`)
 const detail = ref<Supplier | null>(null)
-const detailData = ref<{ avgPaymentTermDays: number | null; materials: Material[] } | null>(null)
+const detailData = ref<{ avgPaymentTermDays: number | null; materials: Material[]; delivery: Delivery | null } | null>(null)
+const onTimeColor = (p: number | null) => (p == null ? 'grey' : p >= 90 ? 'success' : p >= 70 ? 'warning' : 'error')
 async function openDetail(s: Supplier) {
   detail.value = s
   detailData.value = null
@@ -209,6 +218,15 @@ async function create() {
             {{ s.avgPaymentTermDays != null ? `Pagamento em ~${s.avgPaymentTermDays} dias` : 'Sem prazo de pagamento' }}
             <span v-if="s.materials > 1"> · {{ s.materials }} materiais</span>
           </div>
+          <div v-if="s.delivery" class="text-caption muted">
+            <v-icon size="14">mdi-truck-check-outline</v-icon>
+            <template v-if="s.delivery.deliveries">
+              <b :class="`text-${onTimeColor(s.delivery.onTimePct)}`">{{ s.delivery.onTimePct }}% no prazo</b>
+              <span v-if="s.delivery.avgLeadDays != null"> · entrega em ~{{ s.delivery.avgLeadDays }} dias</span>
+            </template>
+            <template v-else>Sem entrega com pedido ainda</template>
+            <span v-if="s.delivery.lateOpenOrders" class="text-error font-weight-bold"> · {{ s.delivery.lateOpenOrders }} pedido(s) atrasado(s)</span>
+          </div>
         </div>
         <v-spacer />
         <v-btn
@@ -249,6 +267,22 @@ async function create() {
           </div>
         </div>
         <v-spacer />
+        <div v-if="detailData?.delivery" class="delivery-box">
+          <template v-if="detailData.delivery.deliveries">
+            <div class="text-caption muted">Entregas com pedido</div>
+            <div>
+              <b :class="`text-${onTimeColor(detailData.delivery.onTimePct)}`">{{ detailData.delivery.onTimePct }}% no prazo</b>
+              <span class="text-caption muted">
+                · {{ detailData.delivery.deliveries }} entrega(s)
+                <template v-if="detailData.delivery.avgLeadDays != null"> · ~{{ detailData.delivery.avgLeadDays }} dias do pedido à nota</template>
+                <template v-if="detailData.delivery.avgDelayDays"> · atraso médio {{ detailData.delivery.avgDelayDays.toLocaleString('pt-BR') }} dia(s)</template>
+              </span>
+            </div>
+          </template>
+          <div v-if="detailData.delivery.lateOpenOrders" class="text-caption text-error font-weight-bold">
+            {{ detailData.delivery.lateOpenOrders }} pedido(s) em aberto passaram da data prometida
+          </div>
+        </div>
         <v-btn icon="mdi-close" variant="text" @click="detail = null" />
       </v-card-title>
       <v-divider />
@@ -298,7 +332,7 @@ async function create() {
       <v-divider />
       <div class="pa-4 text-caption muted">
         Preços das notas aprovadas. Variação = último preço contra a média das compras anteriores nos últimos 6 meses.
-        Prazo = média entre emissão e vencimento das parcelas. Prazo de entrega chega junto com a tela de Compras.
+        Prazo de pagamento = média entre emissão e vencimento das parcelas. Entrega = data da nota comparada à data prometida no pedido de compra.
       </div>
     </v-card>
   </v-dialog>
@@ -335,6 +369,11 @@ async function create() {
 </template>
 
 <style scoped>
+.delivery-box {
+  text-align: right;
+  font-size: 0.875rem;
+  margin-right: 8px;
+}
 .supplier-card {
   cursor: pointer;
   transition: box-shadow 0.15s;

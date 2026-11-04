@@ -493,3 +493,76 @@ describe('preços do fornecedor', () => {
     expect((await api('GET', `/api/suppliers/${withNotes!.id}/prices`, undefined, otherToken)).statusCode).toBe(404)
   })
 })
+
+describe('compras: pedido × nota', () => {
+  const buyCnpj = cnpjWithDigits(rnd() + '0001')
+  let supplierId = ''
+  let orderId = ''
+  const nota = (n: number, opts: Partial<Parameters<typeof buildNfeXml>[0]>) =>
+    nfe(n, { issuer: { cnpj: buyCnpj, name: 'Depósito Compras Ltda' }, extraInfo: undefined, installments: [], ...opts })
+
+  it('cria pedido em rascunho e aprova', async () => {
+    const s = await api('POST', '/api/suppliers', { cnpj: buyCnpj, name: 'Depósito Compras Ltda', status: 'HOMOLOGADO' })
+    supplierId = s.json().id
+    const res = await api('POST', '/api/purchase-orders', {
+      projectId: projectB,
+      supplierId,
+      expectedDate: new Date().toISOString().slice(0, 10),
+      items: [
+        { description: 'Cimento CP II 50kg', unit: 'sc', quantity: 100, unitPrice: 38.9 },
+        { description: 'Areia média lavada', unit: 'm3', quantity: 10, unitPrice: 145 },
+      ],
+    })
+    expect(res.statusCode).toBe(201)
+    const o = res.json()
+    expect(o.status).toBe('RASCUNHO')
+    expect(o.code).toMatch(/^PC-\d{4}$/)
+    expect(o.total).toBe(100 * 38_90 + 10 * 145_00)
+    orderId = o.id
+    expect((await api('POST', `/api/purchase-orders/${orderId}/approve`)).json().status).toBe('APROVADO')
+    expect((await api('GET', `/api/purchase-orders/${orderId}`, undefined, otherToken)).statusCode).toBe(404)
+  })
+
+  it('nota com o número do pedido é vinculada sozinha e herda a obra', async () => {
+    const code = (await api('GET', `/api/purchase-orders/${orderId}`)).json().code
+    const r = (await upload(nota(5001, { purchaseOrder: code, items: [{ description: 'CIMENTO CP II 50KG', ncm: '25232910', unit: 'SC', quantity: 60, unitPrice: 38.9 }] }))).json().results[0]
+    expect(r.document.purchaseOrderId).toBe(orderId)
+    expect(r.document.suggestedProjectId).toBe(projectB)
+    const codes = r.document.issues.map((i: any) => i.code)
+    expect(codes).not.toContain('OBRA_NAO_IDENTIFICADA')
+    expect(codes.filter((c: string) => c.startsWith('PEDIDO_'))).toEqual([])
+    const ap = await api('POST', `/api/documents/${r.documentId}/approve`, { allocations: [{ projectId: projectB, category: 'MATERIAIS', amount: r.document.totalAmount }] })
+    expect(ap.statusCode).toBe(200)
+    const o = (await api('GET', `/api/purchase-orders/${orderId}`)).json()
+    expect(o.status).toBe('PARCIAL')
+    expect(o.items.find((i: any) => i.unit === 'SC').receivedQty).toBe(60)
+    const stats = (await api('GET', `/api/suppliers/${supplierId}/prices`)).json().delivery
+    expect(stats.deliveries).toBe(1)
+    expect(stats.onTimePct).toBe(100)
+  })
+
+  it('nota sem pedido: avisa, sugere o pedido e confere preço e quantidade ao vincular', async () => {
+    const r = (await upload(nota(5002, { items: [{ description: 'CIMENTO CP II 50KG', ncm: '25232910', unit: 'SC', quantity: 60, unitPrice: 42 }] }))).json().results[0]
+    expect(r.document.issues.map((i: any) => i.code)).toContain('SEM_PEDIDO')
+    expect(r.document.orderCandidates.map((c: any) => c.id)).toContain(orderId)
+
+    const linked = (await api('POST', `/api/documents/${r.documentId}/purchase-order`, { orderId })).json()
+    const codes = linked.issues.map((i: any) => i.code)
+    expect(codes).toEqual(expect.arrayContaining(['PEDIDO_PRECO', 'PEDIDO_QTD']))
+    expect(codes).not.toContain('SEM_PEDIDO')
+    expect(linked.status).toBe('EM_REVISAO')
+    expect(linked.orderConference[0].priceDiffPct).toBeCloseTo(7.97, 1)
+    const open = (await api('GET', '/api/alerts')).json().filter((a: any) => a.type === 'PEDIDO' && a.documentId === r.documentId)
+    expect(open.length).toBe(1)
+    expect((await api('GET', '/api/purchase-orders')).json().find((o: any) => o.id === orderId).divergent).toBe(true)
+
+    const unlinked = (await api('POST', `/api/documents/${r.documentId}/purchase-order`, { orderId: null })).json()
+    expect(unlinked.issues.map((i: any) => i.code)).toContain('SEM_PEDIDO')
+    expect((await api('GET', '/api/alerts')).json().some((a: any) => a.type === 'PEDIDO' && a.documentId === r.documentId)).toBe(false)
+  })
+
+  it('não cancela pedido com nota aprovada', async () => {
+    const res = await api('POST', `/api/purchase-orders/${orderId}/cancel`, { reason: 'teste' })
+    expect(res.statusCode).toBe(409)
+  })
+})

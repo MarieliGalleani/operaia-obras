@@ -47,6 +47,8 @@ const showItems = ref(false)
 const editable = computed(() => doc.value && ['RECEBIDO', 'EM_REVISAO'].includes(doc.value.status))
 const isManual = computed(() => doc.value && doc.value.type !== 'NFE')
 const total = computed(() => doc.value?.totalAmount ?? 0)
+// "sem pedido" já aparece no quadro do pedido de compra
+const shownIssues = computed(() => doc.value?.issues.filter((i) => i.code !== 'SEM_PEDIDO') ?? [])
 const critical = computed(() => doc.value?.issues.filter((i) => i.severity === 'CRITICO') ?? [])
 const allocSum = computed(() => allocRows.value.reduce((a, r) => a + parseBRL(r.amount), 0))
 const instSum = computed(() => instRows.value.reduce((a, r) => a + parseBRL(r.amount), 0))
@@ -197,6 +199,25 @@ async function cancel() {
   }
 }
 
+const linking = ref(false)
+async function linkOrder(orderId: string | null) {
+  if (!doc.value) return
+  linking.value = true
+  try {
+    doc.value = await api.post<DocumentDetail>(`/api/documents/${doc.value.id}/purchase-order`, { orderId })
+    resetForm(doc.value)
+    const div = doc.value.orderConference.some((l) => l.problems.length)
+    toast(orderId ? (div ? `Vinculada ao ${doc.value.purchaseOrder?.code}: há divergência com o pedido.` : `Vinculada ao ${doc.value.purchaseOrder?.code}: confere com o pedido.`) : 'Pedido desvinculado', orderId && div ? 'warning' : 'success')
+    emit('changed')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    linking.value = false
+  }
+}
+const qtyFmt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+const unitBRL = (v: number | null) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
+
 async function openFile() {
   if (!doc.value) return
   try {
@@ -277,9 +298,9 @@ async function openFile() {
               </div>
             </v-card>
 
-            <v-card v-if="doc.issues.length" class="pa-4 mb-4">
+            <v-card v-if="shownIssues.length" class="pa-4 mb-4">
               <div class="card-title mb-3">Validação</div>
-              <div v-for="i in doc.issues" :key="i.code" class="d-flex ga-2 mb-2 text-body-2">
+              <div v-for="(i, k) in shownIssues" :key="k" class="d-flex ga-2 mb-2 text-body-2">
                 <v-icon size="18" :color="SEVERITY[i.severity].color">{{ SEVERITY[i.severity].icon }}</v-icon>
                 <span>{{ i.message }}</span>
               </div>
@@ -287,6 +308,61 @@ async function openFile() {
             <v-card v-else-if="doc.type === 'NFE'" class="pa-4 mb-4 d-flex align-center ga-3">
               <v-icon color="success" size="28">mdi-check-circle</v-icon>
               <div class="text-body-2">Dados extraídos e validados sem pendências.</div>
+            </v-card>
+
+            <!-- Pedido de compra: conferência pedido × nota -->
+            <v-card v-if="doc.purchaseOrder || (editable && doc.supplier)" class="pa-4 mb-4">
+              <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-2">
+                <div class="card-title">Pedido de compra</div>
+                <div v-if="doc.purchaseOrder" class="d-flex align-center ga-1">
+                  <v-chip color="primary" variant="tonal" prepend-icon="mdi-cart-outline" :to="{ path: '/compras', query: { pedido: doc.purchaseOrder.id } }">{{ doc.purchaseOrder.code }}</v-chip>
+                  <v-btn v-if="editable" size="small" variant="text" :loading="linking" @click="linkOrder(null)">Desvincular</v-btn>
+                </div>
+              </div>
+              <template v-if="doc.purchaseOrder">
+                <div class="text-body-2 muted mb-3">
+                  Obra {{ doc.purchaseOrder.projectName }} · entrega prometida {{ date(doc.purchaseOrder.expectedDate) }}
+                </div>
+                <v-table density="compact" class="conf-table">
+                  <thead>
+                    <tr><th>Item</th><th class="text-right">Pedido</th><th class="text-right">Nota</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(l, k) in doc.orderConference" :key="k">
+                      <td>{{ l.description }}</td>
+                      <td class="text-right money">
+                        <template v-if="l.orderedQty != null">{{ qtyFmt(l.orderedQty) }} {{ l.unit }} × {{ unitBRL(l.orderedPrice) }}</template>
+                        <span v-else class="muted">—</span>
+                        <div v-if="l.receivedBefore" class="text-caption muted">{{ qtyFmt(l.receivedBefore) }} já recebidos</div>
+                      </td>
+                      <td class="text-right money">
+                        {{ qtyFmt(l.invoicedQty) }} {{ l.unit }} × {{ unitBRL(l.invoicedPrice) }}
+                        <div class="mt-1">
+                        <v-chip v-if="!l.problems.length" size="x-small" color="success" variant="tonal" prepend-icon="mdi-check">confere</v-chip>
+                        <v-chip v-if="l.problems.includes('PRECO_ACIMA')" size="x-small" color="error" variant="flat">preço +{{ l.priceDiffPct?.toLocaleString('pt-BR') }}%</v-chip>
+                        <v-chip v-if="l.problems.includes('QTD_ACIMA')" size="x-small" color="warning" variant="flat" class="ml-1">qtd. acima</v-chip>
+                        <v-chip v-if="l.problems.includes('NAO_PEDIDO')" size="x-small" color="warning" variant="flat">fora do pedido</v-chip>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </template>
+              <template v-else>
+                <div class="text-body-2 mb-3">
+                  <v-icon size="18" color="info" class="mr-1">mdi-information-outline</v-icon>
+                  Nota sem pedido. Pode ser aprovada mesmo assim<template v-if="doc.orderCandidates.length">, ou vincule a um pedido em aberto de {{ doc.supplier?.name }} para conferir preço e quantidade</template>.
+                </div>
+                <div v-for="(c, k) in doc.orderCandidates" :key="c.id" class="cand-row">
+                  <div class="flex-grow-1">
+                    <span class="font-weight-bold">{{ c.code }}</span>
+                    <v-chip v-if="k === 0 && (c.projectId === doc.suggestedProjectId || doc.orderCandidates.length === 1)" size="x-small" color="primary" variant="tonal" class="ml-1">sugerido</v-chip>
+                    <div class="text-caption muted">{{ c.projectName }} · {{ brl(c.total) }} · entrega {{ date(c.expectedDate) }}</div>
+                  </div>
+                  <v-btn size="small" color="primary" variant="tonal" :loading="linking" @click="linkOrder(c.id)">Vincular</v-btn>
+                </div>
+                <div v-if="!doc.orderCandidates.length" class="text-caption muted">Nenhum pedido em aberto deste fornecedor.</div>
+              </template>
             </v-card>
 
             <v-card v-if="doc.items.length" class="pa-4">
@@ -446,6 +522,15 @@ async function openFile() {
   grid-template-columns: auto 1fr 130px auto;
   gap: 8px;
   align-items: center;
+}
+.cand-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  margin-bottom: 6px;
 }
 @media (max-width: 600px) {
   .extracted {

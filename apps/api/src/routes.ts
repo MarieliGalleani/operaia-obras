@@ -28,6 +28,7 @@ import { exportReport, getReports } from './services/reports.js'
 import { getSupplierPriceSummaries, getSupplierPrices } from './services/prices.js'
 import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { getDashboard } from './services/dashboard.js'
+import { approveOrder, cancelOrder, createOrder, getDeliveryStats, getOrder, linkDocumentToOrder, listOrders, updateOrder } from './services/purchases.js'
 import {
   approveDocument,
   cancelDocument,
@@ -306,7 +307,7 @@ export async function registerRoutes(app: FastifyInstance) {
     r.get('/api/suppliers', async (req) => {
       const { companyId } = me(req)
       const q = z.object({ q: z.string().optional(), category: category.optional(), status: z.enum(['HOMOLOGADO', 'PENDENTE', 'BLOQUEADO']).optional() }).parse(req.query)
-      const summaries = await getSupplierPriceSummaries(companyId)
+      const [summaries, delivery] = await Promise.all([getSupplierPriceSummaries(companyId), getDeliveryStats(companyId)])
       const list = await db
         .select({
           id: suppliers.id,
@@ -333,7 +334,7 @@ export async function registerRoutes(app: FastifyInstance) {
           ),
         )
         .orderBy(suppliers.name)
-      return list.map((s) => ({ ...s, ...(summaries.get(s.id) ?? { avgPaymentTermDays: null, materials: 0, topItem: null }) }))
+      return list.map((s) => ({ ...s, ...(summaries.get(s.id) ?? { avgPaymentTermDays: null, materials: 0, topItem: null }), delivery: delivery.get(s.id) ?? null }))
     })
 
     r.get('/api/suppliers/:id/prices', async (req) => {
@@ -341,7 +342,8 @@ export async function registerRoutes(app: FastifyInstance) {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const supplier = await db.query.suppliers.findFirst({ where: and(eq(suppliers.companyId, companyId), eq(suppliers.id, id)) })
       if (!supplier) throw notFound('Fornecedor')
-      return getSupplierPrices(companyId, id)
+      const [prices, delivery] = await Promise.all([getSupplierPrices(companyId, id), getDeliveryStats(companyId)])
+      return { ...prices, delivery: delivery.get(id) ?? null }
     })
 
     const supplierBody = z.object({
@@ -384,6 +386,58 @@ export async function registerRoutes(app: FastifyInstance) {
       if (!s) throw notFound('Fornecedor')
       await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'supplier', entityId: id, action: 'updated', data: body })
       return s
+    })
+
+    // ------------------------------------------------------------- compras
+    const orderBody = z.object({
+      projectId: z.string().uuid(),
+      supplierId: z.string().uuid(),
+      category: category.optional(),
+      expectedDate: ymd.optional().nullable(),
+      paymentTerms: z.string().max(200).optional().nullable(),
+      notes: z.string().max(2000).optional().nullable(),
+      items: z
+        .array(z.object({ description: z.string().min(2).max(200), unit: z.string().max(10).optional().nullable(), quantity: z.number().positive(), unitPrice: z.number().nonnegative() }))
+        .min(1)
+        .max(200),
+    })
+    r.get('/api/purchase-orders', async (req) => {
+      const q = z.object({ status: z.string().optional(), projectId: z.string().uuid().optional(), supplierId: z.string().uuid().optional() }).parse(req.query)
+      return listOrders(me(req).companyId, q)
+    })
+    r.get('/api/purchase-orders/:id', async (req) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      return getOrder(me(req).companyId, id)
+    })
+    r.post('/api/purchase-orders', async (req, reply) => {
+      const u = me(req)
+      const body = orderBody.parse(req.body)
+      return reply.code(201).send(await createOrder(u.companyId, { id: u.sub, name: u.name }, body))
+    })
+    r.patch('/api/purchase-orders/:id', async (req) => {
+      const u = me(req)
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      return updateOrder(u.companyId, u.sub, id, orderBody.partial().parse(req.body))
+    })
+    r.post('/api/purchase-orders/:id/approve', async (req) => {
+      const u = me(req)
+      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      return approveOrder(u.companyId, { id: u.sub, name: u.name }, id)
+    })
+    r.post('/api/purchase-orders/:id/cancel', async (req) => {
+      const u = me(req)
+      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      const { reason } = z.object({ reason: z.string().min(3) }).parse(req.body)
+      return cancelOrder(u.companyId, u.sub, id, reason)
+    })
+    r.post('/api/documents/:id/purchase-order', async (req) => {
+      const u = me(req)
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      const { orderId } = z.object({ orderId: z.string().uuid().nullable() }).parse(req.body)
+      await linkDocumentToOrder(u.companyId, u.sub, id, orderId)
+      return getDocument(u.companyId, id)
     })
 
     // --------------------------------------------------------- documentos

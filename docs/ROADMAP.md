@@ -15,13 +15,13 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 ### Médio (2 a 5 dias)
 - [x] 5. Tela de Orçamentos: previsto × realizado por categoria, todas as obras
 - [x] 6. Tela de Relatórios: custo por obra, por fornecedor e por mês (PDF/planilha)
-- [x] 7. Último preço, média por material e prazo de pagamento do fornecedor (prazo de entrega vem com Compras)
+- [x] 7. Último preço, média por material e prazo de pagamento do fornecedor (prazo de entrega entrou com Compras)
 - [ ] 8. Alertas críticos por WhatsApp (depende de serviço de envio) — ⏸ pulado em 30/10: lembrar a Marieli de escolher o serviço
 - [ ] 9. Cópia das notas aprovadas no Google Drive da construtora — ⏸ pulado em 30/10: lembrar a Marieli de criar o projeto no Google Cloud
 
 ### Difícil (1 a 3 semanas)
 - [ ] 10. Leitura de nota em PDF ou foto (IA sugere, humano confirma)
-- [ ] 11. Tela de Compras: pedido antes da nota e conferência pedido × nota
+- [x] 11. Tela de Compras: pedido antes da nota e conferência pedido × nota (vínculo pelo nº do pedido na nota, divergência de preço/quantidade, entrega parcial, pontualidade do fornecedor)
 - [ ] 12. App de obra do mestre: pedir material, aprovar entrega, fotos, ocorrências, avanço físico
 - [ ] 13. Funcionar sem internet (junto com o app de obra)
 
@@ -53,3 +53,5 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - Todo alerta tem um "fingerprint" do fato que o gerou: não duplica e atualiza o texto quando o número muda.
 - Drizzle ORM no lugar de Prisma (sem engine binária; migrations SQL versionadas).
 - Aprovação de nota e pagamento continuam só online, mesmo quando houver modo sem internet.
+- Nota sem pedido de compra pode ser aprovada, com o aviso "sem pedido" (construtora pequena ainda compra sem pedido formal).
+- Nota só é vinculada sozinha ao pedido quando traz o número dele (xPed, ex.: PC-0012). Sem número, o sistema apenas sugere o pedido.

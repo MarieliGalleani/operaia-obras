@@ -20,6 +20,7 @@ const nav = [
   { title: 'Visão Geral', icon: 'mdi-home-outline', to: '/' },
   { title: 'Obras', icon: 'mdi-office-building-outline', to: '/obras' },
   { title: 'Orçamentos', icon: 'mdi-calculator-variant-outline', to: '/orcamentos' },
+  { title: 'Compras', icon: 'mdi-cart-outline', to: '/compras' },
   { title: 'Fornecedores', icon: 'mdi-truck-outline', to: '/fornecedores' },
   { title: 'Notas Fiscais', icon: 'mdi-file-document-outline', to: '/notas' },
   { title: 'Contas a Pagar', icon: 'mdi-calendar-check-outline', to: '/contas-a-pagar' },

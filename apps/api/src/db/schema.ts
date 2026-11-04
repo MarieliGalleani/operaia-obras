@@ -56,7 +56,15 @@ export const alertType = pgEnum('alert_type', [
   'OBRA_NAO_IDENTIFICADA',
   'VENCIMENTO',
   'ECONOMIA',
+  'PEDIDO',
 ])
+/**
+ * RASCUNHO – montando o pedido, ainda não foi para o fornecedor
+ * APROVADO – liberado para o fornecedor, aguardando entrega
+ * PARCIAL  – parte dos itens já chegou (nota aprovada)
+ * ATENDIDO – tudo entregue
+ */
+export const purchaseOrderStatus = pgEnum('purchase_order_status', ['RASCUNHO', 'APROVADO', 'PARCIAL', 'ATENDIDO', 'CANCELADO'])
 export const alertSeverity = pgEnum('alert_severity', ['CRITICO', 'ATENCAO', 'INFO', 'OPORTUNIDADE'])
 export const alertStatus = pgEnum('alert_status', ['ABERTO', 'RESOLVIDO', 'IGNORADO'])
 export const companyStatus = pgEnum('company_status', ['ATIVA', 'SUSPENSA'])
@@ -180,6 +188,8 @@ export const documents = pgTable(
     issues: jsonb('issues').$type<Issue[]>().notNull().default([]),
     suggestedProjectId: uuid('suggested_project_id').references(() => projects.id),
     suggestionReason: text('suggestion_reason'),
+    /** Pedido de compra que esta nota atende (opcional: nota sem pedido pode ser aprovada, com aviso) */
+    purchaseOrderId: uuid('purchase_order_id').references((): any => purchaseOrders.id, { onDelete: 'set null' }),
     reviewNotes: text('review_notes'),
     createdById: uuid('created_by_id'),
     approvedById: uuid('approved_by_id'),
@@ -306,6 +316,61 @@ export const auditLogs = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('audit_company_entity_idx').on(t.companyId, t.entity, t.entityId)],
+)
+
+/** Pedido de compra: o que foi combinado com o fornecedor antes da nota chegar. */
+export const purchaseOrders = pgTable(
+  'purchase_orders',
+  {
+    id: id(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    /** Número sequencial por construtora (PC-0001); é o que o fornecedor deve informar na nota (xPed) */
+    number: integer('number').notNull(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    supplierId: uuid('supplier_id')
+      .notNull()
+      .references(() => suppliers.id),
+    status: purchaseOrderStatus('status').notNull().default('RASCUNHO'),
+    category: costCategory('category').notNull().default('MATERIAIS'),
+    /** Data de entrega prometida pelo fornecedor */
+    expectedDate: timestamp('expected_date', { withTimezone: true }),
+    paymentTerms: text('payment_terms'),
+    notes: text('notes'),
+    total: money('total').notNull().default(0),
+    createdById: uuid('created_by_id'),
+    createdByName: text('created_by_name'),
+    approvedById: uuid('approved_by_id'),
+    approvedByName: text('approved_by_name'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    cancelReason: text('cancel_reason'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('purchase_orders_company_number_uq').on(t.companyId, t.number),
+    index('purchase_orders_company_status_idx').on(t.companyId, t.status),
+    index('purchase_orders_supplier_idx').on(t.companyId, t.supplierId),
+  ],
+)
+
+export const purchaseOrderItems = pgTable(
+  'purchase_order_items',
+  {
+    id: id(),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: 'cascade' }),
+    description: text('description').notNull(),
+    unit: text('unit'),
+    quantity: numeric('quantity', { precision: 16, scale: 4 }).notNull(),
+    unitPrice: numeric('unit_price', { precision: 16, scale: 4 }).notNull(),
+    total: money('total').notNull(),
+  },
+  (t) => [index('purchase_order_items_order_idx').on(t.orderId)],
 )
 
 export type CostCategory = (typeof costCategory.enumValues)[number]

@@ -9,12 +9,13 @@
  */
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { buildNfeXml } from '../dev/nfe-builder.js'
 import { cnpjWithDigits } from '../domain/cnpj.js'
 import { approveDocument, ingestNfeXml, listPayables, registerPayment } from '../services/documents.js'
+import { approveOrder, createOrder } from '../services/purchases.js'
 import { db, pool } from './client.js'
-import { companies, documents, projectBudgets, projects, suppliers, users, type CostCategory } from './schema.js'
+import { auditLogs, companies, documents, projectBudgets, projects, purchaseOrders, suppliers, users, type CostCategory } from './schema.js'
 
 const COMPANY_CNPJ = cnpjWithDigits('451230980001')
 
@@ -144,7 +145,7 @@ async function main() {
     .values({ name: 'Construtora Alpha', cnpj: COMPANY_CNPJ, apiKey: `oo_${randomBytes(18).toString('hex')}` })
     .returning()
   const passwordHash = await bcrypt.hash('operaia123', 10)
-  const [admin] = await db
+  const users_ = await db
     .insert(users)
     .values([
       { companyId: company.id, name: 'Juliana Souza', email: 'admin@alpha.com.br', passwordHash, role: 'ADMIN' },
@@ -152,6 +153,7 @@ async function main() {
       { companyId: company.id, name: 'João Pereira', email: 'obra@alpha.com.br', passwordHash, role: 'GESTOR_OBRA' },
     ])
     .returning()
+  const admin = users_[0]
 
   for (const s of Object.values(SUPPLIERS)) {
     await db.insert(suppliers).values({
@@ -168,7 +170,7 @@ async function main() {
     })
   }
 
-  const createdProjects = []
+  const createdProjects: Array<(typeof PROJECTS)[number] & { id: string }> = []
   for (const p of PROJECTS) {
     const [row] = await db
       .insert(projects)
@@ -243,6 +245,69 @@ async function main() {
     }
   }
   console.log(`✔ ${paid} títulos pagos`)
+
+  // ---------------------------------------------------------------- compras
+  // pedidos feitos antes das notas: atendido no prazo, atendido com atraso, parcial,
+  // atrasado sem entrega, nota com preço acima do pedido, rascunho e aguardando
+  const supplierRows = await db.select().from(suppliers).where(eq(suppliers.companyId, company.id))
+  const supId = (k: SupplierKey) => supplierRows.find((r) => r.cnpj === SUPPLIERS[k].cnpj)!.id
+  const item = (k: SupplierKey, i: number, quantity: number, factor = 1) => {
+    const c = CATALOG[k][i]
+    return { description: c.description, ncm: c.ncm, unit: c.unit, quantity, unitPrice: Math.round(c.price * factor * 100) / 100 }
+  }
+  const buyer = { id: users_[2].id, name: users_[2].name }
+  const approver = { id: admin.id, name: admin.name }
+  async function order(o: { sup: SupplierKey; project: number; items: ReturnType<typeof item>[]; orderedDaysAgo: number; expectedInDays: number; approve?: boolean; terms?: string }) {
+    const po = await createOrder(company.id, buyer, {
+      projectId: createdProjects[o.project].id,
+      supplierId: supId(o.sup),
+      category: SUPPLIERS[o.sup].cat,
+      expectedDate: plusDays(dayISO(o.orderedDaysAgo), o.expectedInDays),
+      paymentTerms: o.terms ?? '28 dias',
+      items: o.items.map(({ ncm, ...i }) => i),
+    })
+    if (o.approve !== false) await approveOrder(company.id, approver, po.id)
+    const at = new Date(`${dayISO(o.orderedDaysAgo)}T10:00:00-03:00`)
+    await db.update(purchaseOrders).set({ createdAt: at, updatedAt: at, ...(o.approve !== false && { approvedAt: new Date(at.getTime() + 3 * 3600000) }) }).where(eq(purchaseOrders.id, po.id))
+    await db.update(auditLogs).set({ createdAt: at }).where(and(eq(auditLogs.entityId, po.id), eq(auditLogs.action, 'created')))
+    await db.update(auditLogs).set({ createdAt: new Date(at.getTime() + 3 * 3600000) }).where(and(eq(auditLogs.entityId, po.id), eq(auditLogs.action, 'approved')))
+    return po
+  }
+  async function deliver(po: { code: string; projectId: string }, sup: SupplierKey, items: ReturnType<typeof item>[], daysAgo: number, approve = true) {
+    const s = SUPPLIERS[sup]
+    const issueYmd = dayISO(daysAgo)
+    const total = items.reduce((a, it) => a + Math.round(it.quantity * it.unitPrice * 100) / 100, 0)
+    const { xml } = buildNfeXml({
+      number: nfNumber++,
+      issueDate: `${issueYmd}T11:00:00-03:00`,
+      issuer: { cnpj: s.cnpj, name: s.name, tradeName: s.trade },
+      recipientCnpj: COMPANY_CNPJ,
+      items,
+      purchaseOrder: po.code,
+      installments: [{ dueDate: plusDays(issueYmd, 28), amount: Math.round(total * 100) / 100 }],
+      extraInfo: `Pedido ${po.code}. Entrega no canteiro.`,
+    })
+    const res = await ingestNfeXml({ companyId: company.id, userId: admin.id, fileName: `NFe-${s.trade}-${nfNumber - 1}.xml`, content: Buffer.from(xml), source: 'EMAIL' })
+    if (approve) await approveDocument(company.id, admin.id, res.documentId, { allocations: [{ projectId: po.projectId, category: SUPPLIERS[sup].cat, amount: res.document.totalAmount! }], acknowledgeCritical: true })
+  }
+  {
+    const a = [item('concremax', 0, 24)]
+    const p1 = await order({ sup: 'concremax', project: 0, items: a, orderedDaysAgo: 41, expectedInDays: 6 })
+    await deliver(p1, 'concremax', a, 35)
+    const b = [item('acoforte', 0, 2600), item('acoforte', 1, 700)]
+    const p2 = await order({ sup: 'acoforte', project: 1, items: b, orderedDaysAgo: 30, expectedInDays: 8, terms: '2x 28/56 dias' })
+    await deliver(p2, 'acoforte', b, 19)
+    const c = [item('deposito', 0, 400), item('deposito', 1, 60)]
+    const p3 = await order({ sup: 'deposito', project: 3, items: c, orderedDaysAgo: 12, expectedInDays: 6 })
+    await deliver(p3, 'deposito', [item('deposito', 0, 200)], 6)
+    await order({ sup: 'construluz', project: 2, items: [item('construluz', 0, 1800), item('construluz', 1, 2)], orderedDaysAgo: 6, expectedInDays: 4 })
+    const e = [item('acoforte', 0, 1500)]
+    const p5 = await order({ sup: 'acoforte', project: 3, items: e, orderedDaysAgo: 3, expectedInDays: 5 })
+    await deliver(p5, 'acoforte', [item('acoforte', 0, 1500, 1.09)], 0, false)
+    await order({ sup: 'deposito', project: 0, items: [item('deposito', 2, 12)], orderedDaysAgo: 2, expectedInDays: 9 })
+    await order({ sup: 'supermix', project: 3, items: [item('supermix', 0, 45)], orderedDaysAgo: 0, expectedInDays: 10, approve: false })
+  }
+  console.log('✔ 7 pedidos de compra (atendidos, parcial, atrasado, divergente, rascunho)')
 
   // notas que ficam na fila de revisão
   const pending: Array<{ sup: SupplierKey; extra?: string; number?: number; amount: number }> = [

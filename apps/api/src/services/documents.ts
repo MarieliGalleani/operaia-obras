@@ -27,6 +27,7 @@ import { NfeParseError, parseNfeXml, type ParsedNfe } from '../domain/nfe-parser
 import { evaluateBudgetAlerts, evaluatePriceAlerts, raiseAlert, resolveAlerts } from './alerts.js'
 import { audit } from './audit.js'
 import { badRequest, conflict, notFound } from './errors.js'
+import { autoLinkDocument, documentOrderInfo, refreshOrderStatus } from './purchases.js'
 
 const STORAGE_DIR = process.env.STORAGE_DIR ?? './storage'
 const DEFAULT_TERM_DAYS = 30
@@ -306,6 +307,7 @@ export async function ingestNfeXml(params: {
     return doc.id
   })
 
+  await autoLinkDocument(params.companyId, documentId, nfe.purchaseOrder)
   return { status: 'CRIADO', documentId, document: await getDocument(params.companyId, documentId) }
 }
 
@@ -351,8 +353,11 @@ export async function getDocument(companyId: string, id: string) {
   ])
   const { raw, filePath, ...rest } = doc
   const parsed = raw as ParsedNfe | null
+  const orderInfo = await documentOrderInfo(companyId, doc)
   return {
     ...rest,
+    ...orderInfo,
+    purchaseOrderRef: parsed?.purchaseOrder ?? null,
     hasFile: !!filePath,
     installmentsFromXml: parsed?.installments ?? [],
     issuer: parsed?.issuer ?? null,
@@ -390,6 +395,8 @@ export async function listDocuments(companyId: string, filters: { status?: strin
       suggestedProjectId: documents.suggestedProjectId,
       issues: documents.issues,
       createdAt: documents.createdAt,
+      purchaseOrderId: documents.purchaseOrderId,
+      purchaseOrderNumber: sql<number | null>`(SELECT po.number FROM purchase_orders po WHERE po.id = ${documents.purchaseOrderId})`,
       projectNames: sql<string | null>`(SELECT string_agg(DISTINCT p.name, ', ') FROM allocations a JOIN projects p ON p.id = a.project_id WHERE a.document_id = ${documents.id})`,
     })
     .from(documents)
@@ -524,6 +531,7 @@ export async function approveDocument(companyId: string, userId: string, id: str
       .where(eq(documents.id, id))
 
     await resolveAlerts(tx, companyId, [`noproject:${id}`, `dest:${id}`, `dup:${id}`])
+    if (doc.purchaseOrderId) await refreshOrderStatus(tx, doc.purchaseOrderId)
     await audit(tx, {
       companyId,
       userId,
@@ -545,6 +553,7 @@ export async function rejectDocument(companyId: string, userId: string, id: stri
     if (!doc) throw notFound('Documento')
     if (!['RECEBIDO', 'EM_REVISAO'].includes(doc.status)) throw conflict('STATUS_INVALIDO', `Documento está ${doc.status}.`)
     await tx.update(documents).set({ status: 'REJEITADO', reviewNotes: reason, updatedAt: new Date() }).where(eq(documents.id, id))
+    if (doc.purchaseOrderId) await refreshOrderStatus(tx, doc.purchaseOrderId)
     await tx.update(alerts).set({ status: 'RESOLVIDO', resolvedAt: new Date() }).where(and(eq(alerts.documentId, id), eq(alerts.status, 'ABERTO')))
     await audit(tx, { companyId, userId, entity: 'document', entityId: id, action: 'rejected', data: { reason } })
   })
@@ -565,6 +574,7 @@ export async function cancelDocument(companyId: string, userId: string, id: stri
     await tx.delete(allocations).where(eq(allocations.documentId, id))
     await tx.update(payables).set({ status: 'CANCELADO' }).where(eq(payables.documentId, id))
     await tx.update(documents).set({ status: 'CANCELADO', reviewNotes: reason, updatedAt: new Date() }).where(eq(documents.id, id))
+    if (doc.purchaseOrderId) await refreshOrderStatus(tx, doc.purchaseOrderId)
     await audit(tx, { companyId, userId, entity: 'document', entityId: id, action: 'cancelled', data: { reason, removedAllocations: allocs.length } })
     return [...new Set(allocs.map((a) => a.projectId))]
   })

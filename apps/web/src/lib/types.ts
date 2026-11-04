@@ -42,4 +42,19 @@ export interface DocumentDetail {
   allocations: { id: string; projectId: string; projectName: string; category: CostCategory; amount: number }[]
   payables: { id: string; installment: string; dueDate: string; amount: number; paidAmount: number; status: string }[]
   alerts: { id: string; severity: string; title: string; message: string }[]
+  purchaseOrderId: string | null
+  purchaseOrderRef: string | null
+  purchaseOrder: { id: string; code: string; status: string; projectId: string; projectName: string; expectedDate: string | null; total: number } | null
+  orderConference: {
+    description: string
+    unit: string | null
+    invoicedQty: number
+    invoicedPrice: number
+    orderedQty: number | null
+    orderedPrice: number | null
+    receivedBefore: number
+    priceDiffPct: number | null
+    problems: Array<'PRECO_ACIMA' | 'QTD_ACIMA' | 'NAO_PEDIDO'>
+  }[]
+  orderCandidates: { id: string; code: string; status: string; total: number; expectedDate: string | null; projectId: string; projectName: string }[]
 }
