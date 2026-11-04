@@ -57,7 +57,7 @@ const categories = computed(() => {
   return CATEGORIES.map((c) => ({ ...c, budget: by[c.value]?.budget ?? 0, appropriated: by[c.value]?.appropriated ?? 0 })).filter((c) => c.budget || c.appropriated)
 })
 const auth = useAuth()
-const canEdit = computed(() => ['ADMIN', 'GESTOR_OBRA'].includes(auth.me?.user.role ?? ''))
+const canEdit = computed(() => auth.canDo('editar_obras'))
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
 async function onPhoto(e: Event) {

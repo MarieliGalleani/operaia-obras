@@ -109,7 +109,7 @@ const auth = useAuth()
 const route = useRoute()
 const router = useRouter()
 const projects = useProjects()
-const canApprove = computed(() => ['ADMIN', 'GESTOR_OBRA'].includes(auth.me?.user.role ?? ''))
+const canApprove = computed(() => auth.canDo('aprovar_pedidos'))
 
 const rows = ref<OrderRow[]>([])
 const loading = ref(true)

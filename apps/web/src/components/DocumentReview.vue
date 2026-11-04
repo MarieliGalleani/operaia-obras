@@ -453,7 +453,7 @@ async function openFile() {
                 </v-btn>
                 <v-btn variant="outlined" color="error" size="large" :disabled="!auth.canApprove" @click="rejectDialog = true">Rejeitar</v-btn>
               </div>
-              <div v-if="!auth.canApprove" class="text-caption muted mt-2">Seu perfil pode conferir, mas a aprovação é do financeiro.</div>
+              <div v-if="!auth.canApprove" class="text-caption muted mt-2">Você pode conferir, mas a aprovação de notas não foi liberada para você.</div>
             </template>
 
             <template v-else>

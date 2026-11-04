@@ -9,6 +9,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { ZodError } from 'zod'
 import { pool } from './db/client.js'
 import { AppError } from './services/errors.js'
+import { effectivePerms, type Perms, type Role, type StoredPerms } from './services/permissions.js'
 import { registerRoutes } from './routes.js'
 
 export interface AuthUser {
@@ -21,6 +22,10 @@ export interface AuthUser {
   platform?: boolean
   /** Sessão de suporte: a dona está vendo a construtora companyId */
   impersonating?: boolean
+  /** "Ver como": o administrador vê o sistema como esta pessoa, só leitura */
+  readOnly?: boolean
+  viewAsBy?: string
+  viewAsByName?: string
 }
 
 declare module '@fastify/jwt' {
@@ -33,6 +38,10 @@ declare module '@fastify/jwt' {
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (req: FastifyRequest, reply: FastifyReply) => Promise<void>
+  }
+  interface FastifyRequest {
+    /** liberações efetivas desta pessoa, lidas do banco a cada requisição */
+    perms: Perms
   }
 }
 
@@ -67,8 +76,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     // Revalida a cada requisição: desativar uma pessoa ou suspender a construtora vale na hora,
     // sem esperar o login expirar.
     const u = req.user
-    const { rows } = await pool.query<{ active: boolean; is_platform_owner: boolean; status: string | null }>(
-      `SELECT u.active, u.is_platform_owner, c.status
+    const { rows } = await pool.query<{ active: boolean; is_platform_owner: boolean; status: string | null; role: Role; permissions: StoredPerms | null }>(
+      `SELECT u.active, u.is_platform_owner, u.role, u.permissions, c.status
          FROM users u LEFT JOIN companies c ON c.id = $2
         WHERE u.id = $1`,
       [u.sub, u.companyId],
@@ -83,6 +92,10 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     if (row.status === 'SUSPENSA' && !row.is_platform_owner) {
       return reply.code(403).send({ code: 'CONSTRUTORA_SUSPENSA', message: 'O acesso desta construtora está suspenso. Fale com a OperaIA.' })
     }
+    // suporte da plataforma age como administrador; nos demais casos vale o perfil e as liberações do banco
+    // (mudança feita pelo administrador vale na hora, sem novo login)
+    req.perms = effectivePerms(u.impersonating ? 'ADMIN' : row.role, u.impersonating ? null : row.permissions)
+    if (!u.impersonating) u.role = row.role
   })
 
   app.setErrorHandler((err, _req, reply) => {

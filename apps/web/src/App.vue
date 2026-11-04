@@ -7,6 +7,7 @@ import { DEMO } from './lib/demo'
 import { cnpj } from './lib/format'
 import { api } from './lib/api'
 import { net, queue, syncNow } from './lib/offline'
+import { SCREEN_INFO } from './lib/permissions'
 import { toast, toastError, toastState } from './lib/toast'
 import { useAuth } from './stores/auth'
 
@@ -17,27 +18,30 @@ const { mdAndUp } = useDisplay()
 const drawer = ref<boolean | null>(null)
 const search = ref('')
 
-const nav = [
-  { title: 'Visão Geral', icon: 'mdi-home-outline', to: '/' },
-  { title: 'Obras', icon: 'mdi-office-building-outline', to: '/obras' },
-  { title: 'App de obra', icon: 'mdi-hard-hat', to: '/campo' },
-  { title: 'Orçamentos', icon: 'mdi-calculator-variant-outline', to: '/orcamentos' },
-  { title: 'Compras', icon: 'mdi-cart-outline', to: '/compras' },
-  { title: 'Fornecedores', icon: 'mdi-truck-outline', to: '/fornecedores' },
-  { title: 'Notas Fiscais', icon: 'mdi-file-document-outline', to: '/notas' },
-  { title: 'Contas a Pagar', icon: 'mdi-calendar-check-outline', to: '/contas-a-pagar' },
-  { title: 'Relatórios', icon: 'mdi-chart-box-outline', to: '/relatorios' },
-  { title: 'Inteligência', icon: 'mdi-creation-outline', to: '/inteligencia' },
-  { title: 'Integrações', icon: 'mdi-puzzle-outline', to: '/integracoes', admin: true },
-  { title: 'Configurações', icon: 'mdi-cog-outline', to: '/configuracoes', admin: true },
+const ADMIN_NAV = [
+  { title: 'Integrações', icon: 'mdi-puzzle-outline', to: '/integracoes' },
+  { title: 'Configurações', icon: 'mdi-cog-outline', to: '/configuracoes' },
 ]
 const visibleNav = computed(() => {
-  if (auth.isMestre) return nav.filter((n) => n.to === '/campo')
-  const items = nav.filter((n) => !n.admin || auth.me?.user.role === 'ADMIN')
-  return auth.isPlatformOwner && !auth.impersonating
+  // telas liberadas pelo administrador; integrações e configurações são só do administrador
+  const items = [...SCREEN_INFO.filter((s) => auth.can(s.key)), ...(auth.isAdmin ? ADMIN_NAV : [])]
+  return auth.isPlatformOwner && !auth.impersonating && !auth.viewingAs
     ? [{ title: 'Plataforma', icon: 'mdi-shield-crown-outline', to: '/plataforma' }, ...items]
     : items
 })
+const ROLE_TITLE: Record<string, string> = { ADMIN: 'Administrador', FINANCEIRO: 'Financeiro', GESTOR_OBRA: 'Gestor de obra', MESTRE: 'Mestre de obra' }
+const exiting = ref(false)
+async function exitViewAs() {
+  exiting.value = true
+  try {
+    await auth.exitViewAs()
+    router.push('/configuracoes')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    exiting.value = false
+  }
+}
 
 const leaving = ref(false)
 async function backToPlatform() {
@@ -130,7 +134,7 @@ function logout() {
           <v-icon size="16" class="mr-1">{{ queue.syncing ? 'mdi-sync' : 'mdi-cloud-upload-outline' }}</v-icon>{{ queue.items.length }}<template v-if="mdAndUp">&nbsp;na fila</template>
         </v-chip>
         <v-text-field
-          v-if="mdAndUp && !auth.isMestre"
+          v-if="mdAndUp && auth.can('notas')"
           v-model="search"
           placeholder="Buscar nota, fornecedor, número…"
           prepend-inner-icon="mdi-magnify"
@@ -139,7 +143,7 @@ function logout() {
           bg-color="#F7F9F8"
           @keyup.enter="doSearch"
         />
-        <v-btn v-if="!auth.isMestre" icon variant="text" to="/inteligencia" aria-label="Alertas"><v-icon>mdi-bell-outline</v-icon></v-btn>
+        <v-btn v-if="auth.can('inteligencia')" icon variant="text" to="/inteligencia" aria-label="Alertas"><v-icon>mdi-bell-outline</v-icon></v-btn>
         <v-menu>
           <template #activator="{ props }">
             <v-btn v-bind="props" variant="text" class="mr-2 px-2">
@@ -157,6 +161,14 @@ function logout() {
       </v-app-bar>
 
       <v-main>
+        <div v-if="auth.viewingAs" class="support-bar view-as-bar">
+          <v-icon size="18" class="mr-2">mdi-eye-outline</v-icon>
+          <span>
+            Você está vendo o sistema como <strong>{{ auth.me?.user.name }}</strong> ({{ ROLE_TITLE[auth.me?.user.role ?? ''] }}), só leitura. Nada do que fizer aqui é gravado.
+          </span>
+          <v-spacer />
+          <v-btn size="small" variant="flat" color="white" class="text-secondary" :loading="exiting" prepend-icon="mdi-arrow-left" @click="exitViewAs">Voltar ao meu acesso</v-btn>
+        </div>
         <div v-if="auth.impersonating" class="support-bar">
           <v-icon size="18" class="mr-2">mdi-lifebuoy</v-icon>
           <span>Você está dentro de <strong>{{ auth.me?.company.name }}</strong> como suporte. Tudo o que fizer fica registrado na auditoria dela.</span>
@@ -210,6 +222,9 @@ function logout() {
   .page-wrap {
     padding: 16px;
   }
+}
+.view-as-bar {
+  background: #6b4bd6 !important;
 }
 .support-bar {
   display: flex;

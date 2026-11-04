@@ -57,6 +57,7 @@ import {
   updateDocumentDraft,
 } from './services/documents.js'
 import { AppError, badRequest, notFound } from './services/errors.js'
+import { ACTIONS, ROLE_DEFAULTS, SCREENS, apiAllowed, canProject, effectivePerms, type Action } from './services/permissions.js'
 import { computeProjectFinancials } from './services/financials.js'
 
 const category = z.enum(COST_CATEGORIES as unknown as [string, ...string[]]) as z.ZodType<(typeof COST_CATEGORIES)[number]>
@@ -67,6 +68,21 @@ const me = (req: FastifyRequest) => req.user as AuthUser
 
 function requireRole(req: FastifyRequest, ...roles: AuthUser['role'][]) {
   if (!roles.includes(me(req).role)) throw new AppError(403, 'SEM_PERMISSAO', 'Seu perfil não tem permissão para esta ação.')
+}
+const ACTION_LABEL: Record<Action, string> = {
+  aprovar_notas: 'aprovar notas',
+  pagamentos: 'registrar pagamentos',
+  aprovar_pedidos: 'aprovar pedidos de compra',
+  editar_obras: 'editar obras e orçamento',
+  homologar_fornecedores: 'homologar fornecedores',
+}
+/** Ação liberada pelo administrador para esta pessoa (perfil + ajustes). */
+function requireAction(req: FastifyRequest, action: Action) {
+  if (!req.perms.actions.includes(action)) throw new AppError(403, 'SEM_PERMISSAO', `Você não tem liberação para ${ACTION_LABEL[action]}. Fale com o administrador.`)
+}
+/** Obra liberada para esta pessoa (quando o administrador restringiu as obras). */
+function requireProject(req: FastifyRequest, projectId: string) {
+  if (!canProject(req.perms, projectId)) throw notFound('Obra')
 }
 
 async function readUpload(req: FastifyRequest) {
@@ -169,11 +185,15 @@ export async function registerRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------- protegido
   await app.register(async (r) => {
     r.addHook('onRequest', app.authenticate)
-    // Mestre de obra: só o app de obra (sem valores, sem financeiro)
+    // Liberações: "ver como" é só leitura; cada grupo de rotas exige a tela correspondente
     r.addHook('onRequest', async (req, reply) => {
       const u = req.user as AuthUser | undefined
-      if (u?.role === 'MESTRE' && !req.url.startsWith('/api/field/') && !req.url.startsWith('/api/auth/')) {
-        return reply.code(403).send({ code: 'SEM_PERMISSAO', message: 'Seu perfil acessa só o app de obra.' })
+      if (!u || !req.perms) return
+      if (u.readOnly && req.method !== 'GET') {
+        return reply.code(403).send({ code: 'SO_LEITURA', message: `Você está vendo o sistema como ${u.name}: só leitura. Volte ao seu acesso para alterar.` })
+      }
+      if (apiAllowed(req.url, req.perms) === false) {
+        return reply.code(403).send({ code: 'SEM_PERMISSAO', message: 'Esta tela não foi liberada para você. Fale com o administrador.' })
       }
     })
     // App de obra: reenvio com a mesma Idempotency-Key devolve a resposta já gravada
@@ -208,6 +228,8 @@ export async function registerRoutes(app: FastifyInstance) {
         user: { id: user.id, name: user.name, email: user.email, role: u.role, isPlatformOwner: user.isPlatformOwner },
         company: { id: company.id, name: company.name, cnpj: company.cnpj, status: company.status },
         impersonating: !!u.impersonating,
+        permissions: req.perms,
+        viewAs: u.readOnly ? { byName: u.viewAsByName ?? 'Administrador' } : null,
       }
     })
 
@@ -220,7 +242,7 @@ export async function registerRoutes(app: FastifyInstance) {
     // -------------------------------------------------------------- obras
     r.get('/api/projects', async (req) => {
       const { companyId } = me(req)
-      const rows = await db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(projects.code)
+      const rows = (await db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(projects.code)).filter((p) => canProject(req.perms, p.id))
       const fin = await computeProjectFinancials(db, companyId)
       return rows.map((p) => ({ ...p, financials: fin.get(p.id) }))
     })
@@ -228,6 +250,7 @@ export async function registerRoutes(app: FastifyInstance) {
     r.get('/api/projects/:id', async (req) => {
       const { companyId } = me(req)
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      requireProject(req, id)
       const project = await db.query.projects.findFirst({ where: and(eq(projects.companyId, companyId), eq(projects.id, id)) })
       if (!project) throw notFound('Obra')
       const fin = (await computeProjectFinancials(db, companyId, [id])).get(id)
@@ -257,7 +280,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.post('/api/projects', async (req, reply) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'editar_obras')
       const body = projectBody.parse(req.body)
       const project = await db.transaction(async (tx) => {
         const [p] = await tx
@@ -283,8 +306,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.patch('/api/projects/:id', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'editar_obras')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      requireProject(req, id)
       const body = projectBody.partial().parse(req.body)
       return db.transaction(async (tx) => {
         const [p] = await tx
@@ -313,8 +337,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.post('/api/projects/:id/image', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'editar_obras')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      requireProject(req, id)
       const project = await db.query.projects.findFirst({ where: and(eq(projects.companyId, u.companyId), eq(projects.id, id)) })
       if (!project) throw notFound('Obra')
       if (!req.isMultipart()) throw badRequest('SEM_ARQUIVO', 'Envie a foto da obra.')
@@ -336,8 +361,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.delete('/api/projects/:id/image', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'editar_obras')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      requireProject(req, id)
       const project = await db.query.projects.findFirst({ where: and(eq(projects.companyId, u.companyId), eq(projects.id, id)) })
       if (!project) throw notFound('Obra')
       await db.update(projects).set({ imageUrl: null }).where(eq(projects.id, id))
@@ -404,7 +430,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const body = supplierBody.parse(req.body)
       const cnpj = onlyDigits(body.cnpj)
       if (!isValidCnpj(cnpj)) throw badRequest('CNPJ_INVALIDO', 'CNPJ inválido.')
-      if (body.status && body.status !== 'PENDENTE') requireRole(req, 'ADMIN', 'FINANCEIRO')
+      if (body.status && body.status !== 'PENDENTE') requireAction(req, 'homologar_fornecedores')
       const homologation = body.status === 'HOMOLOGADO' ? { homologatedAt: new Date(), homologatedBy: u.name } : {}
       const [s] = await db.insert(suppliers).values({ ...body, ...homologation, cnpj, companyId: u.companyId }).returning()
       await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'supplier', entityId: s.id, action: 'created', data: body })
@@ -415,7 +441,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const u = me(req)
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const body = supplierBody.omit({ cnpj: true }).partial().parse(req.body)
-      if (body.status) requireRole(req, 'ADMIN', 'FINANCEIRO')
+      if (body.status) requireAction(req, 'homologar_fornecedores')
       const current = await db.query.suppliers.findFirst({ where: and(eq(suppliers.companyId, u.companyId), eq(suppliers.id, id)) })
       if (!current) throw notFound('Fornecedor')
       // registra quem e quando homologou; sair de homologado limpa o registro
@@ -465,13 +491,13 @@ export async function registerRoutes(app: FastifyInstance) {
     })
     r.post('/api/purchase-orders/:id/approve', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'aprovar_pedidos')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       return approveOrder(u.companyId, { id: u.sub, name: u.name }, id)
     })
     r.post('/api/purchase-orders/:id/cancel', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'aprovar_pedidos')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const { reason } = z.object({ reason: z.string().min(3) }).parse(req.body)
       return cancelOrder(u.companyId, u.sub, id, reason)
@@ -491,7 +517,28 @@ export async function registerRoutes(app: FastifyInstance) {
     /** hora em que aconteceu no canteiro (ISO); a API limita a agora e a 30 dias atrás */
     const happenedAt = z.string().datetime({ offset: true }).optional().nullable()
 
-    r.get('/api/field/projects', async (req) => fieldProjects(me(req).companyId))
+    // obras liberadas: projetos, e o projeto por trás de pedido, etapa e ocorrência
+    const projectOf = async (table: 'purchase_orders' | 'project_stages' | 'occurrences', id: string) => {
+      const { rows } = await db.execute<{ project_id: string }>(sql`SELECT project_id FROM ${sql.identifier(table)} WHERE id = ${id}`)
+      return rows[0]?.project_id as string | undefined
+    }
+    r.addHook('preHandler', async (req) => {
+      if (!req.url.startsWith('/api/field/') || !req.perms?.projectIds) return
+      const id = (req.params as { id?: string })?.id
+      if (!id || !/^[0-9a-f-]{36}$/.test(id)) return
+      const path = req.url.split('?')[0]
+      const projectId = path.startsWith('/api/field/projects/')
+        ? id
+        : path.startsWith('/api/field/orders/')
+          ? await projectOf('purchase_orders', id)
+          : path.startsWith('/api/field/stages/')
+            ? await projectOf('project_stages', id)
+            : path.startsWith('/api/field/occurrences/')
+              ? await projectOf('occurrences', id)
+              : undefined
+      if (projectId) requireProject(req, projectId)
+    })
+    r.get('/api/field/projects', async (req) => (await fieldProjects(me(req).companyId)).filter((p) => canProject(req.perms, p.id)))
     r.get('/api/field/projects/:id', async (req) => fieldProject(me(req).companyId, uid.parse(req.params).id))
     r.post('/api/field/projects/:id/requests', async (req, reply) => {
       const body = z.object({ items: fieldItems, neededBy: ymd.optional().nullable(), urgent: z.boolean().optional(), notes: z.string().max(1000).optional().nullable(), happenedAt }).parse(req.body)
@@ -553,7 +600,8 @@ export async function registerRoutes(app: FastifyInstance) {
 
     // escritório: etapas da obra e solicitações de material
     r.put('/api/projects/:id/stages', async (req) => {
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'editar_obras')
+      requireProject(req, uid.parse(req.params).id)
       const { stages } = z.object({ stages: z.array(z.object({ id: z.string().uuid().optional().nullable(), name: z.string().min(2).max(80), weight: z.number().min(1).max(1000) })).min(1).max(40) }).parse(req.body)
       return setStages(me(req).companyId, me(req).sub, uid.parse(req.params).id, stages)
     })
@@ -563,7 +611,7 @@ export async function registerRoutes(app: FastifyInstance) {
       return listMaterialRequests(me(req).companyId, q.status)
     })
     r.post('/api/material-requests/:id/decline', async (req) => {
-      requireRole(req, 'ADMIN', 'GESTOR_OBRA')
+      requireAction(req, 'aprovar_pedidos')
       const { reason } = z.object({ reason: z.string().min(3) }).parse(req.body)
       return declineMaterialRequest(me(req).companyId, fieldUser(req), uid.parse(req.params).id, reason)
     })
@@ -640,7 +688,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.post('/api/documents/:id/approve', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'FINANCEIRO')
+      requireAction(req, 'aprovar_notas')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const body = z
         .object({
@@ -655,7 +703,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.post('/api/documents/:id/reject', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'FINANCEIRO')
+      requireAction(req, 'aprovar_notas')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const { reason } = z.object({ reason: z.string().min(3) }).parse(req.body)
       return rejectDocument(u.companyId, u.sub, id, reason)
@@ -663,7 +711,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.post('/api/documents/:id/cancel', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'FINANCEIRO')
+      requireAction(req, 'aprovar_notas')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const { reason } = z.object({ reason: z.string().min(3) }).parse(req.body)
       return cancelDocument(u.companyId, u.sub, id, reason)
@@ -677,7 +725,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.post('/api/payables/:id/payments', async (req) => {
       const u = me(req)
-      requireRole(req, 'ADMIN', 'FINANCEIRO')
+      requireAction(req, 'pagamentos')
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const body = z.object({ amount: cents.positive(), paidAt: ymd, method: z.string().optional() }).parse(req.body)
       return registerPayment(u.companyId, u.sub, id, body)
@@ -744,11 +792,39 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.get('/api/users', async (req) => {
       requireRole(req, 'ADMIN')
-      return db
-        .select({ id: users.id, name: users.name, email: users.email, role: users.role, active: users.active, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
+      const rows = await db
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, permissions: users.permissions, active: users.active, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
         .from(users)
         .where(eq(users.companyId, me(req).companyId))
         .orderBy(users.name)
+      return rows.map(({ permissions, ...x }) => ({ ...x, permissions: effectivePerms(x.role, permissions) }))
+    })
+
+    /** Padrão de cada perfil, para a tela de liberações. */
+    r.get('/api/permissions/defaults', async (req) => {
+      requireRole(req, 'ADMIN')
+      return { screens: SCREENS, actions: ACTIONS, roles: ROLE_DEFAULTS }
+    })
+
+    /**
+     * "Ver como": o administrador entra com as liberações da pessoa, só leitura, por até 1 hora.
+     * Nada é gravado em nome dela (a API recusa qualquer alteração nesse modo).
+     */
+    r.post('/api/users/:id/view-as', async (req) => {
+      requireRole(req, 'ADMIN')
+      const u = me(req)
+      if (u.readOnly) throw badRequest('JA_VENDO', 'Volte ao seu acesso antes de ver como outra pessoa.')
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      if (id === u.sub) throw badRequest('PROPRIO', 'Esse já é o seu acesso.')
+      const target = await db.query.users.findFirst({ where: and(eq(users.id, id), eq(users.companyId, u.companyId), eq(users.isPlatformOwner, false)) })
+      if (!target) throw notFound('Usuário')
+      if (!target.active) throw badRequest('INATIVO', 'Este acesso está desativado.')
+      await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'user', entityId: id, action: 'view_as', data: { by: u.name } })
+      const token = app.jwt.sign(
+        { sub: target.id, companyId: u.companyId, role: target.role, name: target.name, readOnly: true, viewAsBy: u.sub, viewAsByName: u.name },
+        { expiresIn: '1h' },
+      )
+      return { token }
     })
 
     /** Admin da construtora muda perfil ou desativa alguém da própria equipe */
@@ -756,16 +832,30 @@ export async function registerRoutes(app: FastifyInstance) {
       requireRole(req, 'ADMIN')
       const u = me(req)
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-      const body = z.object({ role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE']).optional(), active: z.boolean().optional() }).parse(req.body)
+      const body = z
+        .object({
+          role: z.enum(['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE']).optional(),
+          active: z.boolean().optional(),
+          // null volta ao padrão do perfil
+          permissions: z
+            .object({ screens: z.array(z.enum(SCREENS)).max(20), actions: z.array(z.enum(ACTIONS)).max(20), projectIds: z.array(z.string().uuid()).max(500).nullable() })
+            .nullable()
+            .optional(),
+        })
+        .parse(req.body)
       if (id === u.sub) throw badRequest('PROPRIO', 'Você não pode alterar o seu próprio perfil ou acesso.')
+      if (body.permissions?.projectIds?.length) {
+        const own = await db.select({ id: projects.id }).from(projects).where(and(eq(projects.companyId, u.companyId), inArray(projects.id, body.permissions.projectIds)))
+        if (own.length !== new Set(body.permissions.projectIds).size) throw badRequest('OBRA_INVALIDA', 'Obra não encontrada para esta construtora.')
+      }
       const [row] = await db
         .update(users)
         .set(body)
         .where(and(eq(users.id, id), eq(users.companyId, u.companyId), eq(users.isPlatformOwner, false)))
-        .returning({ id: users.id, role: users.role, active: users.active })
+        .returning({ id: users.id, role: users.role, active: users.active, permissions: users.permissions })
       if (!row) throw notFound('Usuário')
       await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'user', entityId: id, action: 'updated', data: body })
-      return row
+      return { ...row, permissions: effectivePerms(row.role, row.permissions) }
     })
 
     r.post('/api/users', async (req, reply) => {

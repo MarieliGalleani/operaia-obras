@@ -32,6 +32,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - [ ] 17. Marketplace de fornecedores
 
 ## Já feito
+- [x] Liberações por pessoa (telas, ações e obras) a partir do padrão do perfil, conferidas na API; botão "Ver como" (só leitura) para o administrador
 - [x] Deploy na VPS (Docker, HTTPS via proxy, backup diário do PostgreSQL e do `storage/`)
 - [x] Recebimento de notas pelo e-mail da construtora (IMAP dentro do sistema; n8n opcional)
 - [x] Exportação CSV de lançamentos e títulos (para o financeiro e a contabilidade)
@@ -59,5 +60,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - Ocorrência de gravidade alta vira alerta crítico; média vira alerta de atenção; baixa fica só no diário.
 - Sem internet: só o app de obra funciona offline (pedir material, receber entrega, foto, ocorrência, avanço). Aprovação de nota, pagamento e o resto do escritório continuam só online.
 - Fila do celular usa Idempotency-Key: reenvio nunca duplica. O registro guarda a hora em que aconteceu (limitada a agora e a 30 dias atrás); avanço antigo da fila não sobrescreve um mais novo.
+- Liberações: cada perfil tem um padrão; o administrador ajusta pessoa a pessoa. Administrador sempre vê tudo; Integrações e Configurações são só do administrador. A API confere a cada requisição (mudança vale na hora, sem novo login). Restrição de obras vale para o App de obra e a tela Obras.
+- "Ver como": token de 1 hora, só leitura (a API recusa qualquer alteração), registrado na auditoria.
 - Fotos do canteiro são reduzidas no celular (máx. 1600 px, JPEG) antes de enviar.
 - Nota só é vinculada sozinha ao pedido quando traz o número dele (xPed, ex.: PC-0012). Sem número, o sistema apenas sugere o pedido.

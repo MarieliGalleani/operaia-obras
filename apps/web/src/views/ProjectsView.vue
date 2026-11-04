@@ -88,7 +88,7 @@ async function save() {
         <v-btn value="CONCLUIDA">Concluídas</v-btn>
         <v-btn value="">Todas</v-btn>
       </v-btn-toggle>
-      <v-btn v-if="auth.me?.user.role !== 'FINANCEIRO'" color="primary" prepend-icon="mdi-plus" @click="newProject">Nova obra</v-btn>
+      <v-btn v-if="auth.canDo('editar_obras')" color="primary" prepend-icon="mdi-plus" @click="newProject">Nova obra</v-btn>
     </div>
   </div>
 

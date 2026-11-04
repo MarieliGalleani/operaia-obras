@@ -716,3 +716,82 @@ describe('app de obra sem internet (fila do celular)', () => {
     expect(ok.statusCode).toBe(201)
   })
 })
+
+describe('liberações por pessoa e "ver como"', () => {
+  let finId = ''
+  let fin = ''
+  let mestreId = ''
+  beforeAll(async () => {
+    const [f, m] = await db
+      .insert(users)
+      .values([
+        { companyId: createdCompanies[0], name: 'Fin Restrito', email: `f${rnd()}@teste.com`, passwordHash: 'x', role: 'FINANCEIRO' },
+        { companyId: createdCompanies[0], name: 'Mestre Restrito', email: `r${rnd()}@teste.com`, passwordHash: 'x', role: 'MESTRE' },
+      ])
+      .returning()
+    finId = f.id
+    mestreId = m.id
+    fin = app.jwt.sign({ sub: f.id, companyId: f.companyId, role: 'FINANCEIRO', name: f.name })
+  })
+  const patchUser = (id: string, payload: unknown, auth = token) => app.inject({ method: 'PATCH', url: `/api/users/${id}`, payload: payload as any, headers: { authorization: `Bearer ${auth}` } })
+
+  it('padrão do perfil vem no /me e o administrador vê tudo', async () => {
+    const meAdmin = (await api('GET', '/api/auth/me')).json()
+    expect(meAdmin.permissions.admin).toBe(true)
+    const meFin = (await api('GET', '/api/auth/me', undefined, fin)).json()
+    expect(meFin.permissions.actions).toContain('aprovar_notas')
+    expect(meFin.permissions.custom).toBe(false)
+  })
+
+  it('tirar uma tela bloqueia a API na hora, sem novo login', async () => {
+    expect((await api('GET', '/api/payables', undefined, fin)).statusCode).toBe(200)
+    const r = await patchUser(finId, { permissions: { screens: ['dashboard', 'notas', 'obras'], actions: [], projectIds: null } })
+    expect(r.statusCode).toBe(200)
+    expect(r.json().permissions.custom).toBe(true)
+    expect((await api('GET', '/api/payables', undefined, fin)).statusCode).toBe(403)
+    expect((await api('GET', '/api/reports', undefined, fin)).statusCode).toBe(403)
+    expect((await api('GET', '/api/documents', undefined, fin)).statusCode).toBe(200)
+    // sem a ação de aprovar notas
+    const docs = (await api('GET', '/api/documents?status=RECEBIDO,EM_REVISAO', undefined, fin)).json()
+    if (docs[0]) {
+      const ap = await api('POST', `/api/documents/${docs[0].id}/approve`, { allocations: [{ projectId: projectA, category: 'MATERIAIS', amount: 1 }] }, fin)
+      expect(ap.statusCode).toBe(403)
+    }
+    // volta ao padrão
+    await patchUser(finId, { permissions: null })
+    expect((await api('GET', '/api/payables', undefined, fin)).statusCode).toBe(200)
+  })
+
+  it('só pessoas do administrador; ninguém mexe nas próprias liberações', async () => {
+    expect((await patchUser(finId, { permissions: null }, fin)).statusCode).toBe(403)
+    expect((await patchUser(finId, { permissions: { screens: [], actions: [], projectIds: ['00000000-0000-4000-8000-000000000000'] } })).statusCode).toBe(400)
+  })
+
+  it('obras liberadas restringem o app de obra e a tela Obras', async () => {
+    await patchUser(mestreId, { permissions: { screens: ['app_obra'], actions: [], projectIds: [projectA] } })
+    const m = app.jwt.sign({ sub: mestreId, companyId: createdCompanies[0], role: 'MESTRE', name: 'Mestre Restrito' })
+    const list = (await api('GET', '/api/field/projects', undefined, m)).json()
+    expect(list.map((p: any) => p.id)).toEqual([projectA])
+    expect((await api('GET', `/api/field/projects/${projectB}`, undefined, m)).statusCode).toBe(404)
+    const occ = await app.inject({ method: 'POST', url: `/api/field/projects/${projectB}/occurrences`, payload: { type: 'OUTRO', severity: 'BAIXA', title: 'Obra errada' }, headers: { authorization: `Bearer ${m}` } })
+    expect(occ.statusCode).toBe(404)
+    expect((await api('GET', `/api/field/projects/${projectA}`, undefined, m)).statusCode).toBe(200)
+  })
+
+  it('"ver como" usa as liberações da pessoa e não grava nada', async () => {
+    const r = await api('POST', `/api/users/${mestreId}/view-as`)
+    expect(r.statusCode).toBe(200)
+    const view = r.json().token as string
+    const me2 = (await api('GET', '/api/auth/me', undefined, view)).json()
+    expect(me2.user.id).toBe(mestreId)
+    expect(me2.viewAs.byName).toBeTruthy()
+    expect(me2.permissions.screens).toEqual(['app_obra'])
+    expect((await api('GET', '/api/field/projects', undefined, view)).statusCode).toBe(200)
+    expect((await api('GET', '/api/payables', undefined, view)).statusCode).toBe(403)
+    const w = await app.inject({ method: 'POST', url: `/api/field/projects/${projectA}/occurrences`, payload: { type: 'OUTRO', severity: 'BAIXA', title: 'Não pode gravar' }, headers: { authorization: `Bearer ${view}` } })
+    expect(w.statusCode).toBe(403)
+    expect(w.json().code).toBe('SO_LEITURA')
+    // quem não é administrador não usa "ver como"
+    expect((await api('POST', `/api/users/${mestreId}/view-as`, undefined, fin)).statusCode).toBe(403)
+  })
+})

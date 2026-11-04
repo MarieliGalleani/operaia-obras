@@ -2,6 +2,7 @@ import { createMemoryHistory, createRouter, createWebHistory } from 'vue-router'
 import { DEMO } from './lib/demo'
 import { setUnauthorizedHandler } from './lib/api'
 import { useAuth } from './stores/auth'
+import { SCREEN_INFO, screenOfPath } from './lib/permissions'
 
 const router = createRouter({
   // a demonstração roda dentro de um frame: navegação em memória, sem mexer na URL
@@ -39,17 +40,33 @@ router.beforeEach(async (to) => {
     return { name: 'login' }
   }
   if (to.meta.owner && (!auth.isPlatformOwner || auth.impersonating)) return { name: 'dashboard' }
-  // mestre de obra só usa o app de obra
-  if (auth.isMestre && !to.path.startsWith('/campo')) return { name: 'field' }
+  // admin-only: integrações e configurações
+  if ((to.path.startsWith('/integracoes') || to.path.startsWith('/configuracoes')) && !auth.isAdmin) return firstAllowed()
+  // telas liberadas pelo administrador
+  const screen = screenOfPath(to.path)
+  if (screen && !auth.can(screen)) return firstAllowed()
   return true
 })
+
+/** primeira tela liberada para a pessoa (ex.: mestre cai direto no app de obra) */
+function firstAllowed() {
+  const auth = useAuth()
+  const s = SCREEN_INFO.find((x) => auth.can(x.key))
+  return s ? s.to : { name: 'login' }
+}
 
 router.afterEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} · OperaIA Obras` : 'OperaIA Obras'
 })
 
 setUnauthorizedHandler(() => {
-  useAuth().logout()
+  const auth = useAuth()
+  // "ver como" expirou: volta ao acesso do administrador em vez de deslogar
+  if (auth.viewingAs) {
+    void auth.exitViewAs().then(() => router.push('/configuracoes'))
+    return
+  }
+  auth.logout()
   if (router.currentRoute.value.name !== 'login') router.push({ name: 'login' })
 })
 

@@ -32,7 +32,7 @@ interface Project {
 
 const auth = useAuth()
 const router = useRouter()
-const canEdit = computed(() => ['ADMIN', 'GESTOR_OBRA'].includes(auth.me?.user.role ?? ''))
+const canEdit = computed(() => auth.canDo('editar_obras'))
 const rows = ref<Project[]>([])
 const loading = ref(true)
 const view = ref<'obra' | 'categoria'>('obra')

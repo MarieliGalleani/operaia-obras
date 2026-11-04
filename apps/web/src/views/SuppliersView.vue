@@ -230,7 +230,7 @@ async function create() {
         </div>
         <v-spacer />
         <v-btn
-          v-if="s.status === 'PENDENTE' && auth.canApprove"
+          v-if="s.status === 'PENDENTE' && auth.canDo('homologar_fornecedores')"
           variant="tonal"
           color="success"
           size="small"
@@ -341,7 +341,7 @@ async function create() {
     <v-card v-if="editing" class="pa-5">
       <div class="card-title mb-1">{{ editing.name }}</div>
       <div class="text-caption muted mb-4">{{ cnpj(editing.cnpj) }}</div>
-      <v-select v-model="editing.status" :items="[{ title: 'Homologado', value: 'HOMOLOGADO' }, { title: 'Pendente', value: 'PENDENTE' }, { title: 'Bloqueado', value: 'BLOQUEADO' }]" label="Situação" class="mb-3" :disabled="!auth.canApprove" />
+      <v-select v-model="editing.status" :items="[{ title: 'Homologado', value: 'HOMOLOGADO' }, { title: 'Pendente', value: 'PENDENTE' }, { title: 'Bloqueado', value: 'BLOQUEADO' }]" label="Situação" class="mb-3" :disabled="!auth.canDo('homologar_fornecedores')" />
       <v-select v-model="editing.defaultCategory" :items="CATEGORIES" label="Categoria padrão" clearable class="mb-3" hint="Usada para classificar as próximas notas deste fornecedor" persistent-hint />
       <v-text-field v-model="editing.tradeName" label="Nome fantasia" class="mb-3" />
       <v-text-field v-model="editing.email" label="E-mail" class="mb-3" />

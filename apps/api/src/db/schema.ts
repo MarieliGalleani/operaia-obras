@@ -99,6 +99,8 @@ export const users = pgTable(
     email: text('email').notNull().unique(),
     passwordHash: text('password_hash').notNull(),
     role: userRole('role').notNull().default('FINANCEIRO'),
+    /** liberações ajustadas pelo administrador; null = padrão do perfil */
+    permissions: jsonb('permissions').$type<import('../services/permissions.js').StoredPerms>(),
     active: boolean('active').notNull().default(true),
     /** Dona(o) da plataforma OperaIA: vê e administra todas as construtoras */
     isPlatformOwner: boolean('is_platform_owner').notNull().default(false),

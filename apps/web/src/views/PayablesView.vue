@@ -147,7 +147,7 @@ async function pay() {
       <template #item.remaining="{ item }"><span class="money font-weight-medium">{{ brl(item.amount - item.paidAmount) }}</span></template>
       <template #item.status="{ item }"><PayableChip :status="item.status" :due-date="item.dueDate" /></template>
       <template #item.actions="{ item }">
-        <v-tooltip v-if="['ABERTO', 'PARCIAL'].includes(item.status) && auth.canApprove" text="Registrar pagamento" location="left">
+        <v-tooltip v-if="['ABERTO', 'PARCIAL'].includes(item.status) && auth.canDo('pagamentos')" text="Registrar pagamento" location="left">
           <template #activator="{ props }">
             <v-btn v-bind="props" icon="mdi-cash-check" size="small" variant="tonal" color="primary" aria-label="Registrar pagamento" @click="openPay(item)" />
           </template>
