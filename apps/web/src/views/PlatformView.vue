@@ -52,7 +52,7 @@ const rows = computed(() =>
   (data.value?.companies ?? []).filter(
     (c) =>
       (filter.value === 'todas' || c.status === filter.value) &&
-      (!q.value || c.name.toLowerCase().includes(q.value.toLowerCase()) || c.cnpj.includes(q.value.replace(/\D/g, ''))),
+      (!q.value || c.name.toLowerCase().includes(q.value.toLowerCase()) || (!!q.value.replace(/[^0-9A-Za-z]/g, '') && c.cnpj.includes(q.value.toUpperCase().replace(/[^0-9A-Z]/g, '')))),
   ),
 )
 

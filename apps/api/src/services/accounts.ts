@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { companies, users } from '../db/schema.js'
-import { formatCnpj, isValidCnpj, onlyDigits } from '../domain/cnpj.js'
+import { formatCnpj, isValidCnpj, normalizeCnpj } from '../domain/cnpj.js'
 import { audit } from './audit.js'
 import { badRequest, conflict } from './errors.js'
 
@@ -22,7 +22,7 @@ export function validatePassword(pw: string) {
 }
 
 export async function createCompany(input: { name: string; cnpj: string }) {
-  const cnpj = onlyDigits(input.cnpj)
+  const cnpj = normalizeCnpj(input.cnpj)
   if (!isValidCnpj(cnpj)) throw badRequest('CNPJ_INVALIDO', `CNPJ inválido: ${input.cnpj}`)
   const exists = await db.query.companies.findFirst({ where: eq(companies.cnpj, cnpj) })
   if (exists) throw conflict('JA_EXISTE', `Já existe construtora com CNPJ ${formatCnpj(cnpj)}.`)

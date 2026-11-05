@@ -21,7 +21,7 @@ import {
   type Issue,
 } from '../db/schema.js'
 import { findProjectInText, suggestCategory, suggestServiceCategory } from '../domain/classifier.js'
-import { formatCnpj, isValidAccessKey, isValidCnpj, isValidCpf, onlyDigits } from '../domain/cnpj.js'
+import { formatCnpj, isValidAccessKey, isValidCnpj, isValidCpf, normalizeCnpj } from '../domain/cnpj.js'
 import { formatBRL } from '../domain/money.js'
 import { NfeParseError, parseNfeXml, type ParsedNfe } from '../domain/nfe-parser.js'
 import { looksLikeNfse, NfseParseError, parseNfseXml, type ParsedNfse } from '../domain/nfse-parser.js'
@@ -183,7 +183,7 @@ export async function ingestNfeXml(params: {
     } else if (!nfe.issuer.cnpj || !isValidCnpj(nfe.issuer.cnpj)) {
       issues.push({ code: 'CNPJ_EMITENTE_INVALIDO', severity: 'CRITICO', message: `${isService ? 'CNPJ do prestador' : 'CNPJ do emitente'} ausente ou inválido.` })
     }
-    if (nfe.recipient.cnpj !== onlyDigits(company.cnpj)) {
+    if (nfe.recipient.cnpj !== normalizeCnpj(company.cnpj)) {
       issues.push({
         code: 'DESTINATARIO_DIVERGENTE',
         severity: 'CRITICO',
@@ -551,7 +551,7 @@ export async function updateDocumentDraft(
 
     const set: Partial<typeof documents.$inferInsert> = { updatedAt: new Date() }
     if (patch.supplierCnpj) {
-      const cnpj = onlyDigits(patch.supplierCnpj)
+      const cnpj = normalizeCnpj(patch.supplierCnpj)
       if (!isValidCnpj(cnpj)) throw badRequest('CNPJ_INVALIDO', 'CNPJ do fornecedor inválido.')
       let [s] = await tx.select().from(suppliers).where(and(eq(suppliers.companyId, companyId), eq(suppliers.cnpj, cnpj)))
       if (!s) {

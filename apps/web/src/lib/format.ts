@@ -24,10 +24,11 @@ export const pct = (v?: number | null) => (v == null ? '—' : `${v.toLocaleStri
 export const date = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—')
 export const ymd = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 
+/** CNPJ numérico ou alfanumérico (desde jul/2026: letras nas 12 primeiras posições) e CPF */
 export const cnpj = (v?: string | null) =>
-  v && v.length === 14
-    ? v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
-    : v && v.length === 11
+  v && /^[0-9A-Z]{12}\d{2}$/.test(v)
+    ? v.replace(/^(.{2})(.{3})(.{3})(.{4})(.{2})$/, '$1.$2.$3/$4-$5')
+    : v && /^\d{11}$/.test(v)
       ? v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
       : v ?? '—'
 /** Rótulo curto do tipo de documento */

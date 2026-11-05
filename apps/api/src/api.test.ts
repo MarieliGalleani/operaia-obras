@@ -11,7 +11,7 @@ import { db, pool } from './db/client.js'
 import { companies, documents, projectBudgets, projects, users } from './db/schema.js'
 import { hasMoto, startFakeS3 } from './dev/fake-s3.js'
 import { STORAGE_DIR, diskStorage, s3Storage, setStorage, storage } from './services/storage.js'
-import { cnpjWithDigits } from './domain/cnpj.js'
+import { cnpjWithDigits, formatCnpj } from './domain/cnpj.js'
 import { buildNfeXml } from './dev/nfe-builder.js'
 import { buildNfseXml } from './dev/nfse-builder.js'
 
@@ -367,6 +367,48 @@ describe('notas de serviço (NFS-e)', () => {
     const d = (await api('GET', `/api/documents/${r.documentId}`, undefined, tk)).json()
     expect(d.type).toBe('NFSE')
     expect(d.payableAmount).toBe(8_900_00)
+  })
+})
+
+describe('CNPJ alfanumérico', () => {
+  const alnum = (n: number) => Array.from({ length: n }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 34)]).join('')
+  const empresa = cnpjWithDigits(alnum(8) + '0001')
+  const fornecedor = cnpjWithDigits(alnum(8) + '0001')
+  let tk = ''
+
+  beforeAll(async () => {
+    tk = (await makeCompany(empresa, `t${rnd()}@teste.com`)).token
+  })
+
+  it('NF-e de fornecedor com CNPJ alfanumérico para construtora alfanumérica entra sem pendência de CNPJ ou chave', async () => {
+    const xml = buildNfeXml({
+      number: 1,
+      issueDate: new Date().toISOString().slice(0, 10) + 'T10:00:00-03:00',
+      issuer: { cnpj: fornecedor, name: 'Fornecedor Alfa Ltda' },
+      recipientCnpj: empresa,
+      items: [{ description: 'AREIA MEDIA LAVADA', ncm: '25059000', unit: 'M3', quantity: 10, unitPrice: 150 }],
+      installments: [{ dueDate: '2030-01-10', amount: 1500 }],
+    }).xml
+    const r = (await upload(xml, 'alfa.xml', tk)).json().results[0]
+    expect(r.status).toBe('CRIADO')
+    const codes = r.document.issues.map((i: any) => i.code)
+    expect(codes).not.toContain('CNPJ_EMITENTE_INVALIDO')
+    expect(codes).not.toContain('CHAVE_INVALIDA')
+    expect(codes).not.toContain('DESTINATARIO_DIVERGENTE')
+    expect(r.document.supplier.cnpj).toBe(fornecedor)
+    expect((await upload(xml, 'alfa-de-novo.xml', tk)).json().results[0].status).toBe('JA_IMPORTADO')
+  })
+
+  it('cadastro de fornecedor aceita o CNPJ digitado com máscara e minúsculas; busca acha pelo pedaço', async () => {
+    const outro = cnpjWithDigits(alnum(8) + '0001')
+    const masked = formatCnpj(outro).toLowerCase()
+    const res = await api('POST', '/api/suppliers', { cnpj: masked, name: 'Prestador Beta' }, tk)
+    expect(res.statusCode).toBe(201)
+    expect(res.json().cnpj).toBe(outro)
+    const bad = await api('POST', '/api/suppliers', { cnpj: outro.slice(0, 12) + '00', name: 'Errado' }, tk)
+    expect(bad.json().code).toBe('CNPJ_INVALIDO')
+    const list = (await api('GET', `/api/suppliers?q=${encodeURIComponent(outro.slice(2, 8).toLowerCase())}`, undefined, tk)).json()
+    expect(list.map((s: any) => s.cnpj)).toContain(outro)
   })
 })
 

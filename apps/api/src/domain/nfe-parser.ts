@@ -4,7 +4,7 @@
  * Nenhuma IA aqui: o XML é estruturado e a leitura precisa ser 100% reproduzível.
  */
 import { XMLParser } from 'fast-xml-parser'
-import { onlyDigits } from './cnpj.js'
+import { normalizeAccessKey, normalizeCnpj } from './cnpj.js'
 import { toCents } from './money.js'
 
 export interface ParsedNfeItem {
@@ -81,7 +81,7 @@ export function parseNfeXml(xml: string | Buffer): ParsedNfe {
   const prot = proc?.protNFe?.infProt
 
   const idAttr = str(inf['@_Id'])
-  const accessKey = idAttr ? onlyDigits(idAttr) : str(prot?.chNFe)
+  const accessKey = idAttr ? normalizeAccessKey(idAttr) : str(prot?.chNFe) ? normalizeAccessKey(str(prot?.chNFe)) : null
 
   const items: ParsedNfeItem[] = asArray(inf.det).map((det: any) => {
     const p = det.prod ?? {}
@@ -117,14 +117,14 @@ export function parseNfeXml(xml: string | Buffer): ParsedNfe {
     issueDate: issue ? new Date(issue.length === 10 ? `${issue}T12:00:00-03:00` : issue).toISOString() : null,
     operation: str(ide.natOp),
     issuer: {
-      cnpj: str(emit.CNPJ) ? onlyDigits(emit.CNPJ) : null,
+      cnpj: str(emit.CNPJ) ? normalizeCnpj(emit.CNPJ) : str(emit.CPF) ? normalizeCnpj(emit.CPF) : null,
       name: str(emit.xNome),
       tradeName: str(emit.xFant),
       city: str(emit.enderEmit?.xMun),
       uf: str(emit.enderEmit?.UF),
     },
     recipient: {
-      cnpj: str(dest.CNPJ) ? onlyDigits(dest.CNPJ) : null,
+      cnpj: str(dest.CNPJ) ? normalizeCnpj(dest.CNPJ) : null,
       name: str(dest.xNome),
     },
     totalCents: toCents(str(total.vNF)),

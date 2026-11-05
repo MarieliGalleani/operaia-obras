@@ -39,6 +39,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - [x] Recebimento de notas pelo e-mail da construtora (IMAP dentro do sistema; n8n opcional)
 - [x] Exportação CSV de lançamentos e títulos (para o financeiro e a contabilidade)
 - [x] Painel da plataforma: cadastro de construtoras, usuários, suspensão e acesso de suporte
+- [x] CNPJ alfanumérico (Receita, desde jul/2026): construtoras, fornecedores, NF-e e NFS-e com letras no CNPJ e na chave de acesso
 
 ## Ainda em aberto do plano de validação
 - [x] Importação de obras e orçamento por planilha (modelo .xlsx, também .csv; prévia com erro por linha antes de gravar)
@@ -74,3 +75,4 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - NFS-e: custo da obra = valor do serviço − desconto incondicional; título a pagar = líquido (custo − retenções − desconto condicionado). As retenções a construtora recolhe em guia e aparecem por nota no pacote do contador. Quando a nota informa o líquido, ele manda; retenção que a nota soma mas não detalha vira "outras".
 - NFS-e municipal (sem chave nacional) não duplica pela chave interna município + prestador + número. Mesmo número só é duplicidade dentro do mesmo tipo (NF-e 123 ≠ NFS-e 123).
 - NFS-e não gera alerta de preço unitário (serviço é descrito em texto livre). Categoria sai do item da LC 116 (07.02 empreitada → terceirizados; 07.20 topografia → serviços; 03.05 andaime → equipamentos).
+- CNPJ é guardado sem máscara e em maiúsculas (12 posições letra/número + 2 dígitos). Dígito verificador: cada caractere vale ASCII − 48, mesmos pesos do módulo 11; CNPJ só com números continua igual. A chave de acesso da NF-e/NFS-e pode ter letras nas posições do CNPJ e é validada pela mesma regra.

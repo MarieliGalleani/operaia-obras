@@ -3,7 +3,7 @@
  * para testes, seed e demonstração. Sem assinatura digital — servem para exercitar a leitura.
  * Valores em reais (número), como num XML real.
  */
-import { accessKeyDigit, onlyDigits } from '../domain/cnpj.js'
+import { accessKeyDigit, normalizeCnpj } from '../domain/cnpj.js'
 
 export interface BuildNfseInput {
   layout: 'NACIONAL' | 'ABRASF' | 'ABRASF1' | 'SP'
@@ -43,7 +43,7 @@ function totals(i: BuildNfseInput) {
 
 export function buildNfseXml(i: BuildNfseInput): { xml: string; key: string } {
   const city = i.cityCode ?? '3548906'
-  const cnpj = onlyDigits(i.issuer.cnpj)
+  const cnpj = normalizeCnpj(i.issuer.cnpj)
   const t = totals(i)
   const code = (i.serviceCode ?? '07.02').replace('.', '')
 
@@ -66,7 +66,7 @@ export function buildNfseXml(i: BuildNfseInput): { xml: string; key: string } {
       <tpAmb>2</tpAmb><dhEmi>${i.issueDate}</dhEmi><verAplic>EmissorWeb_1.0</verAplic><serie>1</serie><nDPS>${i.number}</nDPS>
       <dCompet>${i.issueDate.slice(0, 10)}</dCompet><tpEmit>1</tpEmit><cLocEmi>${city}</cLocEmi>
       <prest><CNPJ>${cnpj}</CNPJ><regTrib><opSimpNac>1</opSimpNac><regEspTrib>0</regEspTrib></regTrib></prest>
-      <toma><CNPJ>${onlyDigits(i.recipientCnpj)}</CNPJ><xNome>${esc(i.recipientName ?? 'Construtora')}</xNome></toma>
+      <toma><CNPJ>${normalizeCnpj(i.recipientCnpj)}</CNPJ><xNome>${esc(i.recipientName ?? 'Construtora')}</xNome></toma>
       <serv><locPrest><cLocPrestacao>${city}</cLocPrestacao></locPrest>
         <cServ><cTribNac>${code}01</cTribNac><xDescServ>${esc(i.description)}</xDescServ></cServ>
         ${i.obra ? `<obra><cObra>${esc(i.obra)}</cObra></obra>` : ''}
@@ -94,7 +94,7 @@ export function buildNfseXml(i: BuildNfseInput): { xml: string; key: string } {
 <ValorServicos>${d2(i.services)}</ValorServicos><ValorDeducoes>0</ValorDeducoes>
 <ValorPIS>${d2(i.pis ?? 0)}</ValorPIS><ValorCOFINS>${d2(i.cofins ?? 0)}</ValorCOFINS><ValorINSS>${d2(i.inss ?? 0)}</ValorINSS><ValorIR>${d2(i.ir ?? 0)}</ValorIR><ValorCSLL>${d2(i.csll ?? 0)}</ValorCSLL>
 <CodigoServico>07102</CodigoServico><AliquotaServicos>${i.issRate ?? 0.03}</AliquotaServicos><ValorISS>${d2(t.iss)}</ValorISS><ValorCredito>0</ValorCredito><ISSRetido>${i.issRetained ? 'true' : 'false'}</ISSRetido>
-<CPFCNPJTomador><CNPJ>${onlyDigits(i.recipientCnpj)}</CNPJ></CPFCNPJTomador><RazaoSocialTomador>${esc(i.recipientName ?? 'Construtora')}</RazaoSocialTomador>
+<CPFCNPJTomador><CNPJ>${normalizeCnpj(i.recipientCnpj)}</CNPJ></CPFCNPJTomador><RazaoSocialTomador>${esc(i.recipientName ?? 'Construtora')}</RazaoSocialTomador>
 <Discriminacao>${esc([i.description, i.extraInfo].filter(Boolean).join(' - '))}</Discriminacao></NFe></RetornoConsulta>`
     return { xml, key: `NFSE-3550308-${cnpj}-${i.number}` }
   }
@@ -115,7 +115,7 @@ export function buildNfseXml(i: BuildNfseInput): { xml: string; key: string } {
     <tc:ItemListaServico>${i.serviceCode ?? '07.02'}</tc:ItemListaServico><tc:Discriminacao>${esc(i.description)}</tc:Discriminacao><tc:CodigoMunicipio>${city}</tc:CodigoMunicipio></tc:Servico>
   <tc:PrestadorServico><tc:IdentificacaoPrestador><tc:Cnpj>${cnpj}</tc:Cnpj><tc:InscricaoMunicipal>778899</tc:InscricaoMunicipal></tc:IdentificacaoPrestador><tc:RazaoSocial>${esc(i.issuer.name)}</tc:RazaoSocial>
     <tc:Endereco><tc:Endereco>Rua Um</tc:Endereco><tc:Numero>1</tc:Numero><tc:CodigoMunicipio>${city}</tc:CodigoMunicipio><tc:Uf>SP</tc:Uf></tc:Endereco></tc:PrestadorServico>
-  <tc:TomadorServico><tc:IdentificacaoTomador><tc:CpfCnpj><tc:Cnpj>${onlyDigits(i.recipientCnpj)}</tc:Cnpj></tc:CpfCnpj></tc:IdentificacaoTomador><tc:RazaoSocial>${esc(i.recipientName ?? 'Construtora')}</tc:RazaoSocial></tc:TomadorServico>
+  <tc:TomadorServico><tc:IdentificacaoTomador><tc:CpfCnpj><tc:Cnpj>${normalizeCnpj(i.recipientCnpj)}</tc:Cnpj></tc:CpfCnpj></tc:IdentificacaoTomador><tc:RazaoSocial>${esc(i.recipientName ?? 'Construtora')}</tc:RazaoSocial></tc:TomadorServico>
   <tc:OrgaoGerador><tc:CodigoMunicipio>${city}</tc:CodigoMunicipio><tc:Uf>SP</tc:Uf></tc:OrgaoGerador>
   ${i.obra ? `<tc:ConstrucaoCivil><tc:CodigoObra>${esc(i.obra)}</tc:CodigoObra><tc:Art>ART-2026-0001</tc:Art></tc:ConstrucaoCivil>` : ''}
 </tc:InfNfse></tc:Nfse>${cancel}</CompNfse></ListaNfse></ConsultarNfseResposta>`
@@ -139,7 +139,7 @@ export function buildNfseXml(i: BuildNfseInput): { xml: string; key: string } {
       <ItemListaServico>${i.serviceCode ?? '07.02'}</ItemListaServico><CodigoTributacaoMunicipio>070201</CodigoTributacaoMunicipio>
       <Discriminacao>${esc(i.description)}</Discriminacao><CodigoMunicipio>${city}</CodigoMunicipio><ExigibilidadeISS>1</ExigibilidadeISS></Servico>
     <Prestador><CpfCnpj><Cnpj>${cnpj}</Cnpj></CpfCnpj></Prestador>
-    <TomadorServico><IdentificacaoTomador><CpfCnpj><Cnpj>${onlyDigits(i.recipientCnpj)}</Cnpj></CpfCnpj></IdentificacaoTomador><RazaoSocial>${esc(i.recipientName ?? 'Construtora')}</RazaoSocial></TomadorServico>
+    <TomadorServico><IdentificacaoTomador><CpfCnpj><Cnpj>${normalizeCnpj(i.recipientCnpj)}</Cnpj></CpfCnpj></IdentificacaoTomador><RazaoSocial>${esc(i.recipientName ?? 'Construtora')}</RazaoSocial></TomadorServico>
     ${i.obra ? `<ConstrucaoCivil><CodigoObra>${esc(i.obra)}</CodigoObra><Art>ART-2026-0002</Art></ConstrucaoCivil>` : ''}
   </InfDeclaracaoPrestacaoServico></DeclaracaoPrestacaoServico>
 </InfNfse></Nfse>${cancel}</CompNfse>`

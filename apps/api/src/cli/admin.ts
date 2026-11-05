@@ -16,7 +16,7 @@ import 'dotenv/config'
 import { eq, sql } from 'drizzle-orm'
 import { pool, db } from '../db/client.js'
 import { companies } from '../db/schema.js'
-import { formatCnpj, onlyDigits } from '../domain/cnpj.js'
+import { formatCnpj, normalizeCnpj } from '../domain/cnpj.js'
 import { createCompany, createUser, resetPassword, type Role } from '../services/accounts.js'
 import { STORAGE_DIR, contentTypeOf, diskStorage, listLocalKeys, s3ConfigFromEnv, s3Storage, storage, toKey } from '../services/storage.js'
 
@@ -41,7 +41,7 @@ async function main() {
       break
     }
     case 'criar-usuario': {
-      const c = await db.query.companies.findFirst({ where: eq(companies.cnpj, onlyDigits(need('cnpj'))) })
+      const c = await db.query.companies.findFirst({ where: eq(companies.cnpj, normalizeCnpj(need('cnpj'))) })
       if (!c) throw new Error('Construtora não encontrada para esse CNPJ')
       const role = (args.perfil ?? 'FINANCEIRO').toUpperCase() as Role
       if (!['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE'].includes(role)) throw new Error('--perfil deve ser ADMIN, FINANCEIRO, GESTOR_OBRA ou MESTRE')

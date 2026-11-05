@@ -45,7 +45,8 @@ const isService = computed(() => props.doc.type === 'NFSE')
 const svc = computed(() => props.doc.service)
 const boxTitle = computed(() => (isService.value ? 'DANFSe' : 'DANFE'))
 const boxSub = computed(() => (isService.value ? 'NFS-e' : 'NF-e'))
-const group4 = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '').match(/.{1,4}/g)?.join(' ') ?? ''
+// chave pode ter letras quando o emitente tem CNPJ alfanumérico
+const group4 = (v: string | null | undefined) => (v ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '').match(/.{1,4}/g)?.join(' ') ?? ''
 const keyGroups = computed(() =>
   isService.value
     ? svc.value?.nationalKey
@@ -57,8 +58,8 @@ const keyGroups = computed(() =>
 )
 // "código de barras" decorativo, estável por chave
 const bars = computed(() => {
-  const k = (props.doc.accessKey ?? props.doc.id).replace(/\D/g, '') || '1234567890'
-  return Array.from({ length: 44 }, (_, i) => 1 + (Number(k[i % k.length]) % 3))
+  const k = (props.doc.accessKey ?? props.doc.id).replace(/[^0-9A-Za-z]/g, '') || '1234567890'
+  return Array.from({ length: 44 }, (_, i) => 1 + (k.charCodeAt(i % k.length) % 3))
 })
 const items = computed(() => props.doc.items.slice(0, 4))
 const issuerName = computed(() => props.doc.supplier?.name ?? props.doc.issuer?.name ?? 'Emitente')

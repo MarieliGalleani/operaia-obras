@@ -17,7 +17,7 @@ import {
   suppliers,
   users,
 } from './db/schema.js'
-import { isValidCnpj, onlyDigits } from './domain/cnpj.js'
+import { isValidCnpj, normalizeCnpj } from './domain/cnpj.js'
 import { changePassword, createUser } from './services/accounts.js'
 import { registerPlatformRoutes } from './platform.js'
 import { audit } from './services/audit.js'
@@ -427,7 +427,11 @@ export async function registerRoutes(app: FastifyInstance) {
             eq(suppliers.companyId, companyId),
             q.category ? eq(suppliers.defaultCategory, q.category) : undefined,
             q.status ? eq(suppliers.status, q.status) : undefined,
-            q.q ? sql`(${suppliers.name} ILIKE ${'%' + q.q + '%'} OR ${suppliers.cnpj} LIKE ${'%' + onlyDigits(q.q) + '%'})` : undefined,
+            q.q
+              ? normalizeCnpj(q.q)
+                ? sql`(${suppliers.name} ILIKE ${'%' + q.q + '%'} OR ${suppliers.cnpj} LIKE ${'%' + normalizeCnpj(q.q) + '%'})`
+                : sql`${suppliers.name} ILIKE ${'%' + q.q + '%'}`
+              : undefined,
           ),
         )
         .orderBy(suppliers.name)
@@ -456,7 +460,7 @@ export async function registerRoutes(app: FastifyInstance) {
     r.post('/api/suppliers', async (req, reply) => {
       const u = me(req)
       const body = supplierBody.parse(req.body)
-      const cnpj = onlyDigits(body.cnpj)
+      const cnpj = normalizeCnpj(body.cnpj)
       if (!isValidCnpj(cnpj)) throw badRequest('CNPJ_INVALIDO', 'CNPJ inválido.')
       if (body.status && body.status !== 'PENDENTE') requireAction(req, 'homologar_fornecedores')
       const homologation = body.status === 'HOMOLOGADO' ? { homologatedAt: new Date(), homologatedBy: u.name } : {}

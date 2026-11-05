@@ -6,6 +6,7 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm'
 import { zipSync, type Zippable } from 'fflate'
 import { db } from '../db/client.js'
 import { allocations, documents, projects, suppliers } from '../db/schema.js'
+import { formatCnpj } from '../domain/cnpj.js'
 import { categoryLabel } from './alerts.js'
 import { listPayables } from './documents.js'
 import { badRequest } from './errors.js'
@@ -21,9 +22,9 @@ const money = (cents: number) => (cents / 100).toFixed(2).replace('.', ',')
 const dateBR = (d: Date | string | null) =>
   d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : ''
 /** CNPJ com máscara e chave de acesso em blocos de 4 (como no DANFE): o Excel mantém como texto. */
-const fmtCnpj = (v: string | null) => (v && /^\d{14}$/.test(v) ? v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : (v ?? ''))
+const fmtCnpj = (v: string | null) => (v ? formatCnpj(v) : '')
 // chave interna da NFS-e municipal (NFSE-<município>-<prestador>-<número>) não é chave fiscal: fica em branco
-const fmtKey = (v: string | null) => (v && !v.startsWith('NFSE-') ? v.replace(/(\d{4})(?=\d)/g, '$1 ') : '')
+const fmtKey = (v: string | null) => (v && !v.startsWith('NFSE-') ? v.replace(/([0-9A-Z]{4})(?=[0-9A-Z])/g, '$1 ') : '')
 const dateISO = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : 'sem-data')
 const toCsv = (header: string[], rows: unknown[][]) => BOM + [header, ...rows].map((r) => r.map(cell).join(';')).join('\r\n') + '\r\n'
 

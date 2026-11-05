@@ -12,7 +12,7 @@
  * (ISS, INSS, IR, PIS/COFINS/CSLL) a construtora recolhe em guia, não paga ao fornecedor.
  */
 import { XMLParser } from 'fast-xml-parser'
-import { onlyDigits } from './cnpj.js'
+import { normalizeAccessKey, normalizeCnpj, onlyDigits } from './cnpj.js'
 import { toCents } from './money.js'
 
 export type NfseLayout = 'NACIONAL' | 'ABRASF' | 'SP'
@@ -99,7 +99,7 @@ const s = (node: any, ...paths: string[]) => txt(pick(node, ...paths))
 const c = (node: any, ...paths: string[]) => toCents(s(node, ...paths))
 const doc = (node: any, base: string) => {
   const v = s(node, `${base}.CNPJ`, `${base}.Cnpj`, `${base}.CPF`, `${base}.Cpf`, `${base}.CpfCnpj.Cnpj`, `${base}.CpfCnpj.Cpf`)
-  return v ? onlyDigits(v) : null
+  return v ? normalizeCnpj(v) : null
 }
 
 /** Procura nós com o nome dado em qualquer nível (respostas de consulta embrulham as notas). */
@@ -176,7 +176,7 @@ function parseNacional(nfse: any): ParsedNfse {
   const inf = nfse.infNFSe
   const dps = pick(inf, 'DPS.infDPS') ?? {}
   const idAttr = txt(inf['@_Id'])
-  const nationalKey = idAttr ? onlyDigits(idAttr) : null
+  const nationalKey = idAttr ? normalizeAccessKey(idAttr) : null
 
   const issuerCnpj = doc(inf, 'emit') ?? doc(dps, 'prest')
   const servicesCents = c(dps, 'valores.vServPrest.vServ')

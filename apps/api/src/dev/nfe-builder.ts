@@ -2,7 +2,7 @@
  * Gera XMLs de NF-e 4.00 (nfeProc) FICTÍCIOS para testes, seed e demonstração.
  * Não têm assinatura digital válida — servem para exercitar a leitura, não para efeito fiscal.
  */
-import { accessKeyDigit, onlyDigits } from '../domain/cnpj.js'
+import { accessKeyDigit, normalizeCnpj } from '../domain/cnpj.js'
 
 export interface BuildNfeInput {
   number: number
@@ -28,7 +28,7 @@ export function buildNfeXml(input: BuildNfeInput): { xml: string; accessKey: str
   const uf = input.uf ?? '35'
   const series = input.series ?? 1
   const yymm = input.issueDate.slice(2, 4) + input.issueDate.slice(5, 7)
-  const cnpj = onlyDigits(input.issuer.cnpj)
+  const cnpj = normalizeCnpj(input.issuer.cnpj)
   const cNF = String(input.cNF ?? (input.number * 7919) % 100000000).padStart(8, '0')
   const base = `${uf}${yymm}${cnpj}55${String(series).padStart(3, '0')}${String(input.number).padStart(9, '0')}1${cNF}`
   const accessKey = base + accessKeyDigit(base)
@@ -86,7 +86,7 @@ export function buildNfeXml(input: BuildNfeInput): { xml: string; accessKey: str
         <IE>123456789110</IE><CRT>1</CRT>
       </emit>
       <dest>
-        <CNPJ>${onlyDigits(input.recipientCnpj)}</CNPJ><xNome>${esc(input.recipientName ?? 'Construtora')}</xNome><indIEDest>9</indIEDest>
+        <CNPJ>${normalizeCnpj(input.recipientCnpj)}</CNPJ><xNome>${esc(input.recipientName ?? 'Construtora')}</xNome><indIEDest>9</indIEDest>
       </dest>${det}
       <total><ICMSTot><vBC>0.00</vBC><vICMS>0.00</vICMS><vProd>${dec(vProd)}</vProd><vFrete>0.00</vFrete><vDesc>0.00</vDesc><vNF>${dec(vProd)}</vNF></ICMSTot></total>
       <transp><modFrete>0</modFrete></transp>
