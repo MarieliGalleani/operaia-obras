@@ -8,7 +8,9 @@ import { eq, inArray } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from './app.js'
 import { db, pool } from './db/client.js'
-import { companies, projectBudgets, projects, users } from './db/schema.js'
+import { companies, documents, projectBudgets, projects, users } from './db/schema.js'
+import { hasMoto, startFakeS3 } from './dev/fake-s3.js'
+import { STORAGE_DIR, diskStorage, s3Storage, setStorage, storage } from './services/storage.js'
 import { cnpjWithDigits } from './domain/cnpj.js'
 import { buildNfeXml } from './dev/nfe-builder.js'
 
@@ -1023,5 +1025,51 @@ describe('pacote do contador (ZIP do mês)', () => {
     expect(Number(mine.headers['x-notas'])).toBeLessThan(Number(r.headers['x-notas']))
     expect(strFromU8(unzipSync(new Uint8Array(mine.rawPayload))['notas.csv'])).not.toContain('NF-7001')
     expect((await api('GET', '/api/exports/notas-contador.zip?from=2026-02-01&to=2026-01-01')).statusCode).toBe(400)
+  })
+})
+
+describe.skipIf(!hasMoto())('arquivos no S3 (servidor S3 de teste)', () => {
+  let s3: Awaited<ReturnType<typeof startFakeS3>>
+  beforeAll(async () => {
+    s3 = await startFakeS3('operaia-api')
+    setStorage(s3Storage({ endpoint: s3.endpoint, region: 'auto', bucket: 'operaia-api', accessKeyId: 'teste', secretAccessKey: 'segredo', pathStyle: true }))
+  }, 20_000)
+  afterAll(() => {
+    setStorage(null)
+    s3?.stop()
+  })
+
+  it('nota, foto da obra e pacote do contador funcionam com os arquivos no S3', async () => {
+    const xml = nfe(9101, { items: [{ description: 'BRITA 1', unit: 'M3', quantity: 3, unitPrice: 100 }], installments: [] })
+    const up = (await upload(xml)).json().results[0]
+    expect(up.status).toBe('CRIADO')
+    const [row] = await db.select({ filePath: documents.filePath }).from(documents).where(eq(documents.id, up.documentId))
+    expect(row.filePath).toMatch(/^[0-9a-f-]{36}\/\d{4}-\d{2}\/[0-9a-f]{16}-nota\.xml$/)
+    // o arquivo está no bucket, não no disco
+    expect((await storage().get(row.filePath!))!.toString()).toBe(xml)
+    expect(await diskStorage(STORAGE_DIR).exists(row.filePath!)).toBe(false)
+    const file = await api('GET', `/api/documents/${up.documentId}/file`)
+    expect(file.statusCode).toBe(200)
+    expect(file.headers['content-type']).toContain('application/xml')
+    expect(file.body).toBe(xml)
+
+    // foto da obra
+    const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)])
+    const boundary = '----operaia' + rnd()
+    const body = Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="capa.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`), jpg, Buffer.from(`\r\n--${boundary}--\r\n`)])
+    const img = await app.inject({ method: 'POST', url: `/api/projects/${projectA}/image`, headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body })
+    expect(img.statusCode).toBe(200)
+    const media = await app.inject({ method: 'GET', url: img.json().imageUrl })
+    expect(media.statusCode).toBe(200)
+    expect(Buffer.from(media.rawPayload).equals(jpg)).toBe(true)
+
+    // pacote do contador lê do S3
+    const ap = await api('POST', `/api/documents/${up.documentId}/approve`, { allocations: [{ projectId: projectA, category: 'MATERIAIS', amount: 300_00 }], acknowledgeCritical: true })
+    expect(ap.statusCode).toBe(200)
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+    const { unzipSync, strFromU8 } = await import('fflate')
+    const zip = unzipSync(new Uint8Array((await api('GET', `/api/exports/notas-contador.zip?from=${today}&to=${today}`)).rawPayload))
+    const mine = Object.keys(zip).find((n) => n.includes('NF-9101'))
+    expect(mine && strFromU8(zip[mine])).toBe(xml)
   })
 })

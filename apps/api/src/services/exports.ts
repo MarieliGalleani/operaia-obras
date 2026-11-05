@@ -2,15 +2,15 @@
  * Exportações em CSV no padrão que o Excel brasileiro abre direto:
  * separador ";", decimal com vírgula, datas dd/mm/aaaa e BOM UTF-8.
  */
-import { readFile } from 'node:fs/promises'
 import { and, eq, gte, lte, sql } from 'drizzle-orm'
 import { zipSync, type Zippable } from 'fflate'
 import { db } from '../db/client.js'
 import { allocations, documents, projects, suppliers } from '../db/schema.js'
 import { categoryLabel } from './alerts.js'
 import { listPayables } from './documents.js'
-import { AppError, badRequest } from './errors.js'
+import { badRequest } from './errors.js'
 import { allocInScope, docInScope, type Scope } from './scope.js'
+import { storage } from './storage.js'
 
 const BOM = '﻿'
 const cell = (v: unknown) => {
@@ -162,18 +162,14 @@ export async function exportAccountantZip(companyId: string, filters: { from: st
     const ext = (d.fileName?.match(/\.[A-Za-z0-9]{2,5}$/)?.[0] ?? '').toLowerCase()
     const isXml = ext === '.xml'
     let saved = ''
-    if (d.filePath) {
-      try {
-        const content = await readFile(d.filePath)
-        bytes += content.length
-        if (bytes > MAX_BYTES) throw badRequest('PACOTE_GRANDE', 'O pacote passou de 400 MB. Baixe um período menor.')
-        const base = `${dateISO(d.issueDate)}_NF-${slug(d.number, 15)}_${slug(d.supplierName, 30)}`
-        saved = unique(`${isXml ? 'XML' : 'PDF e fotos'}/${base}${ext || '.bin'}`)
-        files[saved] = [new Uint8Array(content), { level: isXml ? 6 : 0, mtime: d.issueDate ?? new Date() }]
-      } catch (e) {
-        if (e instanceof AppError) throw e
-        saved = '' // arquivo sumiu do disco: a nota continua no índice
-      }
+    // arquivo que sumiu continua no índice como "não guardado"; falha do armazenamento interrompe o pacote
+    const content = d.filePath ? await storage().get(d.filePath) : null
+    if (content) {
+      bytes += content.length
+      if (bytes > MAX_BYTES) throw badRequest('PACOTE_GRANDE', 'O pacote passou de 400 MB. Baixe um período menor.')
+      const base = `${dateISO(d.issueDate)}_NF-${slug(d.number, 15)}_${slug(d.supplierName, 30)}`
+      saved = unique(`${isXml ? 'XML' : 'PDF e fotos'}/${base}${ext || '.bin'}`)
+      files[saved] = [new Uint8Array(content), { level: isXml ? 6 : 0, mtime: d.issueDate ?? new Date() }]
     }
     index.push([
       dateBR(d.issueDate),

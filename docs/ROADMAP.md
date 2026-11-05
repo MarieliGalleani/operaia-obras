@@ -45,7 +45,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - [ ] Medição de erros por campo nos documentos reais (meta: ≥ 95% nos campos críticos)
 - [ ] NFS-e (serviços): padrões municipais mais comuns na região dos pilotos
 - [x] Estorno de pagamento (com motivo; fica no histórico do título e na auditoria)
-- [ ] Armazenamento de arquivos em object storage (S3-compatível)
+- [x] Armazenamento de arquivos em object storage (S3-compatível: Cloudflare R2, Backblaze B2, AWS), com cópia dos arquivos existentes e conferência
 - [ ] Métrica de margem de contribuição por cliente
 - [ ] Previsões (custo final estimado da obra) quando houver histórico suficiente
 
@@ -70,3 +70,4 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - Importação por planilha: código que já existe atualiza a obra, código novo cadastra. Grava só as linhas sem erro, tudo de uma vez; a confirmação relê o arquivo (não confia na prévia do navegador). Atualizar sem categorias mantém o orçamento por categoria atual.
 - Estorno não apaga o pagamento: marca como estornado, com motivo e quem fez, e devolve o valor ao título. Depois do estorno a nota pode ser cancelada, se for o caso.
 - Pacote do contador: notas APROVADAS pela data de emissão; XML/ com os originais, PDF e fotos/, notas.csv e lancamentos-por-obra.csv. Até 3.000 notas ou 400 MB por pacote.
+- Arquivos: o original fica sempre no armazenamento do sistema (disco ou S3, bucket privado, tudo passa pela API). Drive da construtora (item 9) será só cópia.

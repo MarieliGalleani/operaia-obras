@@ -64,6 +64,13 @@
       "when": 1793882953316,
       "tag": "0008_estorno_pagamento",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793885935972,
+      "tag": "0009_arquivos_por_chave",
+      "breakpoints": true
     }
   ]
 }

@@ -198,6 +198,42 @@ Se algo falhar, ele para e diz onde olhar.
 
 **Proxy em container (Traefik do Easypanel):** o `compose.proxy.yml` liga o app à rede do proxy com o nome fixo `operaia-obras-app`. Sem ele, cada rebuild recria o container fora da rede e o site dá **Bad Gateway**. A rede é definida em `PROXY_NETWORK` no `.env.production` (padrão `legacy-net`). Os scripts usam o arquivo sozinhos quando ele existe.
 
+## 11. Arquivos fora da VPS (S3 / Cloudflare R2)
+
+Por padrão os XMLs, PDFs e fotos ficam num volume da própria VPS. Com o app de obra mandando fotos, isso cresce rápido, e se a VPS morrer os arquivos vão junto. O sistema guarda em qualquer armazenamento compatível com S3. Recomendado: **Cloudflare R2** (10 GB grátis, sem taxa de download).
+
+O bucket é **privado**: os arquivos sempre passam pela API, que confere login e liberações.
+
+**1. Criar o bucket (no painel da Cloudflare, uns 10 minutos)**
+1. R2 → **Create bucket** → nome `operaia-obras` → localização automática.
+2. R2 → **Manage R2 API Tokens** → **Create API token** → permissão **Object Read & Write**, só nesse bucket.
+3. Anote: *Access Key ID*, *Secret Access Key* e o endpoint `https://<ID_DA_CONTA>.r2.cloudflarestorage.com`.
+
+**2. Configurar na VPS**
+```bash
+cd ~/operaia-obras && nano .env.production
+# preencha S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (deixe STORAGE_DRIVER=local por enquanto)
+docker compose -f compose.prod.yml --env-file .env.production up -d     # recarrega as variáveis
+```
+
+**3. Copiar os arquivos que já existem** (pode repetir; o que já foi copiado é pulado)
+```bash
+docker compose -f compose.prod.yml --env-file .env.production exec app node dist/cli/admin.js copiar-arquivos-s3
+```
+
+**4. Virar a chave**
+```bash
+sed -i 's/^STORAGE_DRIVER=.*/STORAGE_DRIVER=s3/' .env.production
+./scripts/deploy.sh
+docker compose -f compose.prod.yml --env-file .env.production exec app node dist/cli/admin.js conferir-arquivos
+# esperado: "Armazenamento: s3. N de N arquivo(s) encontrados."
+```
+
+Depois disso:
+- O `backup.sh` continua guardando o banco. Os arquivos ficam no R2, que já é fora da VPS. O volume `storage` antigo pode ficar como cópia até você ter certeza.
+- Para voltar ao disco: `STORAGE_DRIVER=local` e `./scripts/deploy.sh`. Arquivos enviados enquanto estava no S3 ficam só no S3.
+- **Backblaze B2 ou AWS S3:** mesmos passos. Na AWS use `S3_REGION=<região>` e `S3_PATH_STYLE=false`.
+
 ---
 
 ## Problemas comuns
@@ -208,4 +244,6 @@ Se algo falhar, ele para e diz onde olhar.
 | 502 no navegador | Proxy apontando para a porta errada ou app ainda subindo; veja `docker compose ... logs app` |
 | Upload de muitos XMLs falha com 413 | Aumente `client_max_body_size` no nginx |
 | Login responde 429 | Mais de 10 tentativas em 15 minutos do mesmo IP; aguarde ou reinicie o app |
+| Nota abre sem o arquivo ou foto não carrega depois de ligar o S3 | Rode `copiar-arquivos-s3` de novo e depois `conferir-arquivos` (passo 11) |
+| "Armazenamento de arquivos indisponível" | Endpoint, chave ou bucket do S3 errados, ou a VPS sem saída para a internet; confira o `.env.production` |
 | Horários errados | O container usa America/Sao_Paulo; confira o relógio da VPS (`timedatectl`) |

@@ -3,11 +3,10 @@
  * A IA (futuro) pode sugerir; quem registra é este serviço, com regras determinísticas e auditoria.
  */
 import { createHash } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import { and, desc, eq, gte, inArray, lte, notInArray, sql } from 'drizzle-orm'
 import { db, type Tx } from '../db/client.js'
 import { docInScope, type Scope } from './scope.js'
+import { contentTypeOf, storage } from './storage.js'
 import {
   alerts,
   allocations,
@@ -30,7 +29,6 @@ import { audit } from './audit.js'
 import { badRequest, conflict, notFound } from './errors.js'
 import { autoLinkDocument, documentOrderInfo, refreshOrderStatus } from './purchases.js'
 
-const STORAGE_DIR = process.env.STORAGE_DIR ?? './storage'
 const DEFAULT_TERM_DAYS = 30
 
 type Source = 'UPLOAD' | 'EMAIL' | 'API' | 'MANUAL'
@@ -41,14 +39,13 @@ export interface IngestResult {
   document: Awaited<ReturnType<typeof getDocument>>
 }
 
+/** Guarda o arquivo original e devolve a chave (vai em fiscal_documents.file_path). */
 async function storeFile(companyId: string, fileName: string, content: Buffer) {
   const hash = createHash('sha256').update(content).digest('hex').slice(0, 16)
-  const dir = path.join(STORAGE_DIR, companyId, new Date().toISOString().slice(0, 7))
-  await mkdir(dir, { recursive: true })
   const safe = fileName.replace(/[^\w.\-]+/g, '_').slice(-80)
-  const filePath = path.join(dir, `${hash}-${safe}`)
-  await writeFile(filePath, content)
-  return filePath
+  const key = `${companyId}/${new Date().toISOString().slice(0, 7)}/${hash}-${safe}`
+  await storage().put(key, content, contentTypeOf(safe))
+  return key
 }
 
 /** Entrada única para XML de NF-e (upload, e-mail via n8n ou API). */

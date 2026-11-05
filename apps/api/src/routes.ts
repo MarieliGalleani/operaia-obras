@@ -1,7 +1,4 @@
-import { createReadStream } from 'node:fs'
 import { randomBytes } from 'node:crypto'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import bcrypt from 'bcryptjs'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
@@ -62,6 +59,7 @@ import {
 import { AppError, badRequest, notFound } from './services/errors.js'
 import { ACTIONS, ROLE_DEFAULTS, SCREENS, apiAllowed, canProject, effectivePerms, type Action } from './services/permissions.js'
 import { computeProjectFinancials } from './services/financials.js'
+import { contentTypeOf, storage } from './services/storage.js'
 import { alertInScope, assertDocument, assertPayable, assertProjectRow } from './services/scope.js'
 
 const category = z.enum(COST_CATEGORIES as unknown as [string, ...string[]]) as z.ZodType<(typeof COST_CATEGORIES)[number]>
@@ -97,8 +95,7 @@ async function readUpload(req: FastifyRequest) {
   return files
 }
 
-const STORAGE_DIR = process.env.STORAGE_DIR ?? './storage'
-const MEDIA_DIR = path.join(STORAGE_DIR, 'media', 'obras')
+const MEDIA_KEY = (file: string) => `media/obras/${file}`
 const MEDIA_PREFIX = '/api/media/obras/'
 const MEDIA_FILE = /^[a-f0-9]{32}\.(jpg|png|webp)$/
 
@@ -112,7 +109,7 @@ export function imageKind(b: Buffer): 'jpg' | 'png' | 'webp' | null {
 async function removeOwnMedia(url: string | null | undefined) {
   if (!url?.startsWith(MEDIA_PREFIX)) return
   const file = url.slice(MEDIA_PREFIX.length).split('?')[0]
-  if (MEDIA_FILE.test(file)) await unlink(path.join(MEDIA_DIR, file)).catch(() => {})
+  if (MEDIA_FILE.test(file)) await storage().delete(MEDIA_KEY(file)).catch(() => {})
 }
 
 function looksLikeXml(name: string, content: Buffer) {
@@ -175,15 +172,9 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get('/api/media/obras/:file', async (req, reply) => {
     const { file } = z.object({ file: z.string() }).parse(req.params)
     if (!MEDIA_FILE.test(file)) throw notFound('Imagem')
-    const full = path.join(MEDIA_DIR, file)
-    const type = file.endsWith('.png') ? 'image/png' : file.endsWith('.webp') ? 'image/webp' : 'image/jpeg'
-    try {
-      const stream = createReadStream(full)
-      await new Promise((ok, fail) => stream.once('open', ok).once('error', fail))
-      return reply.type(type).header('cache-control', 'public, max-age=31536000, immutable').send(stream)
-    } catch {
-      throw notFound('Imagem')
-    }
+    const content = await storage().get(MEDIA_KEY(file))
+    if (!content) throw notFound('Imagem')
+    return reply.type(contentTypeOf(file)).header('cache-control', 'public, max-age=31536000, immutable').send(content)
   })
 
   // ---------------------------------------------------------- protegido
@@ -387,9 +378,8 @@ export async function registerRoutes(app: FastifyInstance) {
       if (content.length > 5 * 1024 * 1024) throw badRequest('IMAGEM_GRANDE', 'A foto pode ter no máximo 5 MB.')
       const kind = imageKind(content)
       if (!kind) throw badRequest('IMAGEM_INVALIDA', 'Envie uma foto em JPG, PNG ou WEBP.')
-      await mkdir(MEDIA_DIR, { recursive: true })
       const file = `${randomBytes(16).toString('hex')}.${kind}`
-      await writeFile(path.join(MEDIA_DIR, file), content)
+      await storage().put(MEDIA_KEY(file), content, contentTypeOf(file))
       const imageUrl = MEDIA_PREFIX + file
       await db.update(projects).set({ imageUrl }).where(eq(projects.id, id))
       await removeOwnMedia(project.imageUrl)
@@ -630,13 +620,12 @@ export async function registerRoutes(app: FastifyInstance) {
       const ref = z
         .object({ caption: z.string().max(300).optional(), occurrenceId: z.string().uuid().optional(), receiptId: z.string().uuid().optional(), stageUpdateId: z.string().uuid().optional(), happenedAt })
         .parse(Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== '')))
-      await mkdir(MEDIA_DIR, { recursive: true })
       const file = `${randomBytes(16).toString('hex')}.${kind}`
-      await writeFile(path.join(MEDIA_DIR, file), content)
+      await storage().put(MEDIA_KEY(file), content, contentTypeOf(file))
       try {
         return reply.code(201).send(await addSitePhoto(me(req).companyId, fieldUser(req), id, { url: MEDIA_PREFIX + file, ...ref }))
       } catch (e) {
-        await unlink(path.join(MEDIA_DIR, file)).catch(() => {})
+        await storage().delete(MEDIA_KEY(file)).catch(() => {})
         throw e
       }
     })
@@ -675,22 +664,11 @@ export async function registerRoutes(app: FastifyInstance) {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const doc = await db.query.documents.findFirst({ where: and(eq(documents.companyId, me(req).companyId), eq(documents.id, id)) })
       if (!doc?.filePath) throw notFound('Arquivo')
-      const isXml = doc.fileName?.toLowerCase().endsWith('.xml')
-      const lower = doc.fileName?.toLowerCase() ?? ''
-      const type = isXml
-        ? 'application/xml'
-        : lower.endsWith('.pdf')
-          ? 'application/pdf'
-          : /\.jpe?g$/.test(lower)
-            ? 'image/jpeg'
-            : lower.endsWith('.png')
-              ? 'image/png'
-              : lower.endsWith('.webp')
-                ? 'image/webp'
-                : 'application/octet-stream'
-      reply.header('Content-Type', type)
-      reply.header('Content-Disposition', `inline; filename="${(doc.fileName ?? 'documento').replace(/"/g, '')}"`)
-      return reply.send(createReadStream(doc.filePath))
+      const content = await storage().get(doc.filePath)
+      if (!content) throw notFound('Arquivo')
+      reply.header('Content-Type', contentTypeOf(doc.fileName ?? ''))
+      reply.header('Content-Disposition', `inline; filename="${(doc.fileName ?? 'documento').replace(/["\r\n]/g, '')}"`)
+      return reply.send(content)
     })
 
     /** Upload de um ou vários arquivos: XML de NF-e é lido; PDF/imagem abre documento para digitação. */

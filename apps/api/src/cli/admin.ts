@@ -7,6 +7,8 @@
  *   node dist/cli/admin.js resetar-senha --email fulana@construtora.com.br
  *   node dist/cli/admin.js listar
  *   node dist/cli/admin.js dona-plataforma --email voce@email.com   (libera o Painel da Plataforma)
+ *   node dist/cli/admin.js copiar-arquivos-s3      (copia a pasta de arquivos para o S3 configurado; pode repetir)
+ *   node dist/cli/admin.js conferir-arquivos       (confere se todo arquivo das notas e fotos existe no armazenamento atual)
  *
  * Em desenvolvimento: pnpm --filter @operaia-obras/api admin <comando> ...
  */
@@ -16,6 +18,7 @@ import { pool, db } from '../db/client.js'
 import { companies } from '../db/schema.js'
 import { formatCnpj, onlyDigits } from '../domain/cnpj.js'
 import { createCompany, createUser, resetPassword, type Role } from '../services/accounts.js'
+import { STORAGE_DIR, contentTypeOf, diskStorage, listLocalKeys, s3ConfigFromEnv, s3Storage, storage, toKey } from '../services/storage.js'
 
 const [cmd, ...rest] = process.argv.slice(2)
 const args: Record<string, string> = {}
@@ -68,8 +71,44 @@ async function main() {
       console.log(`✔ ${res.rows[0].name} agora é dona da plataforma. Saia e entre de novo para ver o menu Plataforma.`)
       break
     }
+    case 'copiar-arquivos-s3': {
+      const cfg = s3ConfigFromEnv()
+      if (!cfg) throw new Error('Configure S3_BUCKET, S3_ENDPOINT, S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY no .env antes de copiar.')
+      const s3 = s3Storage(cfg)
+      const disk = diskStorage(STORAGE_DIR)
+      const keys = await listLocalKeys(STORAGE_DIR)
+      console.log(`${keys.length} arquivo(s) em ${STORAGE_DIR} → bucket ${cfg.bucket}`)
+      let copied = 0
+      let skipped = 0
+      for (const [i, key] of keys.entries()) {
+        if (await s3.exists(key)) skipped++
+        else {
+          await s3.put(key, (await disk.get(key))!, contentTypeOf(key))
+          copied++
+        }
+        if ((i + 1) % 50 === 0) console.log(`  ${i + 1}/${keys.length}`)
+      }
+      console.log(`✔ ${copied} copiado(s), ${skipped} já estavam lá. Agora coloque STORAGE_DRIVER=s3 no .env e rode ./scripts/deploy.sh`)
+      break
+    }
+    case 'conferir-arquivos': {
+      const st = storage()
+      const { rows } = await db.execute<{ key: string }>(sql`
+        SELECT file_path AS key FROM fiscal_documents WHERE file_path IS NOT NULL
+        UNION SELECT substring(image_url from '^/api/media/obras/([a-f0-9]+\.[a-z]+)') FROM projects WHERE image_url LIKE '/api/media/obras/%'
+        UNION SELECT substring(url from '^/api/media/obras/([a-f0-9]+\.[a-z]+)') FROM site_photos WHERE url LIKE '/api/media/obras/%'`)
+      const keys = rows.map((r) => (r.key.includes('/') ? toKey(r.key) : `media/obras/${r.key}`))
+      const missing: string[] = []
+      for (const k of keys) if (!(await st.exists(k))) missing.push(k)
+      console.log(`Armazenamento: ${st.kind}. ${keys.length - missing.length} de ${keys.length} arquivo(s) encontrados.`)
+      if (missing.length) {
+        console.log(missing.slice(0, 20).map((k) => `  falta: ${k}`).join('\n'))
+        process.exitCode = 1
+      }
+      break
+    }
     default:
-      console.log('Comandos: criar-construtora | criar-usuario | resetar-senha | listar | dona-plataforma (veja o topo de src/cli/admin.ts)')
+      console.log('Comandos: criar-construtora | criar-usuario | resetar-senha | listar | dona-plataforma | copiar-arquivos-s3 | conferir-arquivos (veja o topo de src/cli/admin.ts)')
   }
 }
 
