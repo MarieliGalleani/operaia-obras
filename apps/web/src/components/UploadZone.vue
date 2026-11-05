@@ -59,7 +59,7 @@ const label = (r: UploadResult) => {
     <v-progress-circular v-if="uploading" indeterminate color="primary" />
     <template v-else>
       <v-icon size="30" color="primary">mdi-tray-arrow-up</v-icon>
-      <div class="font-weight-medium mt-1">Arraste XMLs de NF-e ou PDFs aqui</div>
+      <div class="font-weight-medium mt-1">Arraste XMLs de NF-e ou NFS-e, ou PDFs aqui</div>
       <div class="text-caption muted">ou clique para selecionar · vários arquivos de uma vez</div>
     </template>
   </div>

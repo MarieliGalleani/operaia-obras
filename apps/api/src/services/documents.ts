@@ -20,10 +20,11 @@ import {
   type CostCategory,
   type Issue,
 } from '../db/schema.js'
-import { findProjectInText, suggestCategory } from '../domain/classifier.js'
-import { formatCnpj, isValidAccessKey, isValidCnpj, onlyDigits } from '../domain/cnpj.js'
+import { findProjectInText, suggestCategory, suggestServiceCategory } from '../domain/classifier.js'
+import { formatCnpj, isValidAccessKey, isValidCnpj, isValidCpf, onlyDigits } from '../domain/cnpj.js'
 import { formatBRL } from '../domain/money.js'
 import { NfeParseError, parseNfeXml, type ParsedNfe } from '../domain/nfe-parser.js'
+import { looksLikeNfse, NfseParseError, parseNfseXml, type ParsedNfse } from '../domain/nfse-parser.js'
 import { evaluateBudgetAlerts, evaluateDueAlerts, evaluatePriceAlerts, raiseAlert, resolveAlerts } from './alerts.js'
 import { audit } from './audit.js'
 import { badRequest, conflict, notFound } from './errors.js'
@@ -48,7 +49,78 @@ async function storeFile(companyId: string, fileName: string, content: Buffer) {
   return key
 }
 
-/** Entrada única para XML de NF-e (upload, e-mail via n8n ou API). */
+/** XML lido, no formato comum às notas de produto (NF-e) e de serviço (NFS-e). */
+export type ParsedFiscal = ParsedNfe & {
+  kind: 'NFE' | 'NFSE'
+  /** quanto o fornecedor recebe: total da NF-e; líquido (total − retenções) da NFS-e */
+  payableCents: number
+  nfse?: ParsedNfse
+}
+
+const RETENTION_LABEL: Record<keyof ParsedNfse['retentions'], string> = {
+  iss: 'ISS',
+  inss: 'INSS',
+  ir: 'IR',
+  csll: 'CSLL',
+  pis: 'PIS',
+  cofins: 'COFINS',
+  outras: 'outras retenções',
+}
+export const retentionSummary = (n: ParsedNfse) =>
+  (Object.keys(RETENTION_LABEL) as Array<keyof ParsedNfse['retentions']>)
+    .filter((k) => n.retentions[k] > 0)
+    .map((k) => `${RETENTION_LABEL[k]} ${formatBRL(n.retentions[k])}`)
+    .join(' · ')
+
+function fromNfse(n: ParsedNfse): ParsedFiscal {
+  const text = [n.description, n.extraInfo].filter(Boolean).join(' | ')
+  return {
+    kind: 'NFSE',
+    accessKey: n.key,
+    number: n.number,
+    series: null,
+    issueDate: n.issueDate,
+    operation: n.serviceLabel,
+    issuer: { cnpj: n.issuer.cnpj, name: n.issuer.name, tradeName: n.issuer.tradeName, city: n.issuer.city, uf: n.issuer.uf },
+    recipient: n.recipient,
+    totalCents: n.totalCents,
+    productsCents: 0,
+    items: [
+      {
+        code: n.serviceCode,
+        description: n.description.slice(0, 500),
+        ncm: null,
+        cfop: null,
+        unit: 'SV',
+        quantity: '1',
+        unitPrice: (n.totalCents / 100).toFixed(2),
+        totalCents: n.totalCents,
+      },
+    ],
+    installments: [],
+    extraInfo: n.extraInfo,
+    purchaseOrder: /PC[\s\-_]*\d{1,7}/i.exec(text)?.[0] ?? null,
+    authorized: !n.cancelled,
+    protocol: null,
+    payableCents: n.netCents,
+    nfse: n,
+  }
+}
+
+/** Lê o XML: NFS-e (nacional, ABRASF ou Paulistana) ou NF-e. */
+export function parseFiscalXml(content: Buffer | string): ParsedFiscal {
+  const text = typeof content === 'string' ? content : content.toString('utf8')
+  try {
+    if (looksLikeNfse(text)) return fromNfse(parseNfseXml(text))
+    const nfe = parseNfeXml(text)
+    return { ...nfe, kind: 'NFE', payableCents: nfe.totalCents }
+  } catch (e) {
+    if (e instanceof NfeParseError || e instanceof NfseParseError) throw badRequest('XML_INVALIDO', e.message)
+    throw e
+  }
+}
+
+/** Entrada única para XML de nota (upload, e-mail, n8n ou API): NF-e de produto ou NFS-e de serviço. */
 export async function ingestNfeXml(params: {
   companyId: string
   userId?: string | null
@@ -56,13 +128,9 @@ export async function ingestNfeXml(params: {
   content: Buffer
   source: Source
 }): Promise<IngestResult> {
-  let nfe: ParsedNfe
-  try {
-    nfe = parseNfeXml(params.content)
-  } catch (e) {
-    if (e instanceof NfeParseError) throw badRequest('XML_INVALIDO', e.message)
-    throw e
-  }
+  const nfe = parseFiscalXml(params.content)
+  const isService = nfe.kind === 'NFSE'
+  const label = isService ? 'NFS-e' : 'NF'
 
   const [company] = await db.select().from(companies).where(eq(companies.id, params.companyId))
   if (!company) throw notFound('Construtora')
@@ -107,11 +175,13 @@ export async function ingestNfeXml(params: {
     }
 
     // --- validações determinísticas ----------------------------------------
-    if (!nfe.accessKey || !isValidAccessKey(nfe.accessKey)) {
+    if (!isService && (!nfe.accessKey || !isValidAccessKey(nfe.accessKey))) {
       issues.push({ code: 'CHAVE_INVALIDA', severity: 'CRITICO', message: 'Chave de acesso ausente ou com dígito verificador inválido.' })
     }
-    if (!nfe.issuer.cnpj || !isValidCnpj(nfe.issuer.cnpj)) {
-      issues.push({ code: 'CNPJ_EMITENTE_INVALIDO', severity: 'CRITICO', message: 'CNPJ do emitente ausente ou inválido.' })
+    if (isService && nfe.issuer.cnpj?.length === 11 && isValidCpf(nfe.issuer.cnpj)) {
+      issues.push({ code: 'PRESTADOR_PESSOA_FISICA', severity: 'INFO', message: 'Prestador pessoa física (CPF). Confira as retenções de INSS e IR com o contador.' })
+    } else if (!nfe.issuer.cnpj || !isValidCnpj(nfe.issuer.cnpj)) {
+      issues.push({ code: 'CNPJ_EMITENTE_INVALIDO', severity: 'CRITICO', message: `${isService ? 'CNPJ do prestador' : 'CNPJ do emitente'} ausente ou inválido.` })
     }
     if (nfe.recipient.cnpj !== onlyDigits(company.cnpj)) {
       issues.push({
@@ -120,7 +190,18 @@ export async function ingestNfeXml(params: {
         message: `Nota emitida para ${nfe.recipient.cnpj ? formatCnpj(nfe.recipient.cnpj) : 'destinatário sem CNPJ'}, não para ${formatCnpj(company.cnpj)}.`,
       })
     }
-    if (!nfe.authorized) {
+    if (isService) {
+      const n = nfe.nfse!
+      if (n.cancelled) issues.push({ code: 'NFSE_CANCELADA', severity: 'CRITICO', message: 'A prefeitura informa esta NFS-e como cancelada. Não pague sem falar com o prestador.' })
+      if (n.replaced) issues.push({ code: 'NFSE_SUBSTITUIDA', severity: 'ATENCAO', message: 'Esta NFS-e foi substituída por outra. Confirme qual vale antes de aprovar.' })
+      if (n.retainedCents > 0) {
+        issues.push({
+          code: 'RETENCOES',
+          severity: 'ATENCAO',
+          message: `Retenções na nota: ${retentionSummary(n)}. O prestador recebe o líquido de ${formatBRL(n.netCents)}; as retenções a construtora recolhe em guia.`,
+        })
+      }
+    } else if (!nfe.authorized) {
       issues.push({ code: 'SEM_PROTOCOLO', severity: 'ATENCAO', message: 'XML sem protocolo de autorização da SEFAZ. Confirme a autorização antes de pagar.' })
     }
     if (nfe.totalCents <= 0) {
@@ -135,7 +216,16 @@ export async function ingestNfeXml(params: {
       issues.push({ code: 'SOMA_PARCELAS', severity: 'ATENCAO', message: `Soma das parcelas (${formatBRL(instSum)}) difere do total da nota (${formatBRL(nfe.totalCents)}). Ajuste os vencimentos na aprovação.` })
     }
     if (!nfe.installments.length) {
-      issues.push({ code: 'SEM_PARCELAS', severity: 'INFO', message: `Nota sem duplicatas. Sugerido vencimento único em ${DEFAULT_TERM_DAYS} dias — confirme na aprovação.` })
+      issues.push({
+        code: 'SEM_PARCELAS',
+        severity: 'INFO',
+        message: isService
+          ? `Nota de serviço não traz vencimento. Sugerido vencimento único em ${DEFAULT_TERM_DAYS} dias de ${formatBRL(nfe.payableCents)} — confirme na aprovação.`
+          : `Nota sem duplicatas. Sugerido vencimento único em ${DEFAULT_TERM_DAYS} dias — confirme na aprovação.`,
+      })
+    }
+    if (nfe.payableCents <= 0 && nfe.totalCents > 0) {
+      issues.push({ code: 'LIQUIDO_ZERADO', severity: 'CRITICO', message: 'Valor líquido da nota é zero ou negativo. Confira as retenções.' })
     }
 
     // --- possível duplicidade (mesma nota com outra chave, ou mesma cobrança) --
@@ -143,7 +233,7 @@ export async function ingestNfeXml(params: {
     if (supplier) {
       const issue = nfe.issueDate ? new Date(nfe.issueDate) : new Date()
       const candidates = await tx
-        .select({ id: documents.id, number: documents.number, totalAmount: documents.totalAmount, issueDate: documents.issueDate })
+        .select({ id: documents.id, type: documents.type, number: documents.number, totalAmount: documents.totalAmount, issueDate: documents.issueDate })
         .from(documents)
         .where(
           and(
@@ -153,7 +243,8 @@ export async function ingestNfeXml(params: {
           ),
         )
       duplicateOf =
-        candidates.find((c) => c.number && c.number === nfe.number) ??
+        // mesmo número só conta como repetição dentro do mesmo tipo (NF-e 123 e NFS-e 123 são notas diferentes)
+        candidates.find((c) => c.number && c.number === nfe.number && c.type === nfe.kind) ??
         candidates.find(
           (c) =>
             c.totalAmount === nfe.totalCents &&
@@ -165,7 +256,7 @@ export async function ingestNfeXml(params: {
         issues.push({
           code: 'POSSIVEL_DUPLICIDADE',
           severity: 'CRITICO',
-          message: `Possível duplicidade com a NF ${duplicateOf.number ?? '(sem número)'} do mesmo fornecedor já lançada.`,
+          message: `Possível duplicidade com a ${label} ${duplicateOf.number ?? '(sem número)'} do mesmo fornecedor já lançada.`,
         })
       }
     }
@@ -175,7 +266,8 @@ export async function ingestNfeXml(params: {
       .select({ id: projects.id, code: projects.code, name: projects.name })
       .from(projects)
       .where(and(eq(projects.companyId, params.companyId), eq(projects.status, 'ATIVA')))
-    let match = findProjectInText([nfe.extraInfo, nfe.purchaseOrder].filter(Boolean).join(' '), activeProjects)
+    // NFS-e: a obra costuma vir na discriminação do serviço
+    let match = findProjectInText([nfe.extraInfo, nfe.purchaseOrder, nfe.nfse?.description].filter(Boolean).join(' '), activeProjects)
     let suggestionReason = match?.reason ?? null
     let explicit = !!match
 
@@ -209,7 +301,9 @@ export async function ingestNfeXml(params: {
       })
     }
 
-    const cat = suggestCategory({ supplierDefault: supplier?.defaultCategory, operation: nfe.operation, items: nfe.items })
+    const cat = isService
+      ? suggestServiceCategory({ supplierDefault: supplier?.defaultCategory, serviceCode: nfe.nfse!.serviceCode, description: nfe.nfse!.description })
+      : suggestCategory({ supplierDefault: supplier?.defaultCategory, operation: nfe.operation, items: nfe.items })
 
     const needsReview = issues.some((i) => i.severity !== 'INFO')
     const [doc] = await tx
@@ -217,7 +311,7 @@ export async function ingestNfeXml(params: {
       .values({
         companyId: params.companyId,
         supplierId: supplier?.id ?? null,
-        type: 'NFE',
+        type: nfe.kind,
         source: params.source,
         status: needsReview ? 'EM_REVISAO' : 'RECEBIDO',
         accessKey: nfe.accessKey,
@@ -265,7 +359,7 @@ export async function ingestNfeXml(params: {
         documentId: doc.id,
         supplierId: supplier?.id,
         title: 'Nota duplicada identificada',
-        message: `NF ${nfe.number} de ${supplier?.name} parece repetir a NF ${duplicateOf.number} já lançada.`,
+        message: `${label} ${nfe.number} de ${supplier?.name} parece repetir a ${label} ${duplicateOf.number} já lançada.`,
       })
     }
     if (issues.some((i) => i.code === 'DESTINATARIO_DIVERGENTE')) {
@@ -277,7 +371,7 @@ export async function ingestNfeXml(params: {
         documentId: doc.id,
         supplierId: supplier?.id,
         title: 'Nota emitida para outro CNPJ',
-        message: `NF ${nfe.number} de ${supplier?.name ?? 'fornecedor'} não foi emitida para a construtora.`,
+        message: `${label} ${nfe.number} de ${supplier?.name ?? 'fornecedor'} não foi emitida para a construtora.`,
       })
     }
     if (!explicit) {
@@ -289,10 +383,11 @@ export async function ingestNfeXml(params: {
         documentId: doc.id,
         supplierId: supplier?.id,
         title: 'Nota sem obra identificada',
-        message: `NF ${nfe.number} de ${supplier?.name ?? 'fornecedor'} (${formatBRL(nfe.totalCents)}) aguarda definição da obra.`,
+        message: `${label} ${nfe.number} de ${supplier?.name ?? 'fornecedor'} (${formatBRL(nfe.totalCents)}) aguarda definição da obra.`,
       })
     }
-    await evaluatePriceAlerts(tx, params.companyId, doc.id)
+    // preço unitário só faz sentido para material; serviço é descrito em texto livre
+    if (!isService) await evaluatePriceAlerts(tx, params.companyId, doc.id)
 
     await audit(tx, {
       companyId: params.companyId,
@@ -300,7 +395,7 @@ export async function ingestNfeXml(params: {
       entity: 'document',
       entityId: doc.id,
       action: 'imported',
-      data: { source: params.source, fileName: params.fileName, issues: issues.map((i) => i.code) },
+      data: { source: params.source, fileName: params.fileName, kind: nfe.kind, layout: nfe.nfse?.layout, issues: issues.map((i) => i.code) },
     })
     return doc.id
   })
@@ -329,7 +424,8 @@ export async function ingestManualFile(params: { companyId: string; userId?: str
   return { status: 'CRIADO' as const, documentId: doc.id, document: await getDocument(params.companyId, doc.id) }
 }
 
-function summarizeItems(nfe: ParsedNfe) {
+function summarizeItems(nfe: ParsedFiscal) {
+  if (nfe.kind === 'NFSE') return nfe.nfse!.description.replace(/\s+/g, ' ').slice(0, 160)
   if (!nfe.items.length) return null
   const first = nfe.items[0].description
   return nfe.items.length === 1 ? first : `${first} e mais ${nfe.items.length - 1} item(ns)`
@@ -350,7 +446,8 @@ export async function getDocument(companyId: string, id: string) {
     db.select().from(alerts).where(and(eq(alerts.documentId, id), eq(alerts.status, 'ABERTO'))),
   ])
   const { raw, filePath, ...rest } = doc
-  const parsed = raw as ParsedNfe | null
+  const parsed = raw as ParsedFiscal | null
+  const n = parsed?.nfse
   const orderInfo = await documentOrderInfo(companyId, doc)
   return {
     ...rest,
@@ -358,6 +455,31 @@ export async function getDocument(companyId: string, id: string) {
     purchaseOrderRef: parsed?.purchaseOrder ?? null,
     hasFile: !!filePath,
     installmentsFromXml: parsed?.installments ?? [],
+    /** valor que o fornecedor recebe (títulos somam isto) */
+    payableAmount: parsed?.payableCents ?? rest.totalAmount,
+    service: n
+      ? {
+          layout: n.layout,
+          serviceCode: n.serviceCode,
+          serviceLabel: n.serviceLabel,
+          competence: n.competence,
+          cityCode: n.cityCode,
+          cityName: n.cityName,
+          verificationCode: n.verificationCode,
+          nationalKey: n.nationalKey,
+          servicesCents: n.servicesCents,
+          unconditionalDiscountCents: n.unconditionalDiscountCents,
+          conditionalDiscountCents: n.conditionalDiscountCents,
+          issCents: n.issCents,
+          issRate: n.issRate,
+          issRetained: n.issRetained,
+          retentions: n.retentions,
+          retainedCents: n.retainedCents,
+          netCents: n.netCents,
+          construction: n.construction,
+          cancelled: n.cancelled,
+        }
+      : null,
     issuer: parsed?.issuer ?? null,
     supplier: supplier ?? null,
     items,
@@ -440,7 +562,7 @@ export async function updateDocumentDraft(
     if (patch.number !== undefined) set.number = patch.number
     if (patch.issueDate) set.issueDate = new Date(patch.issueDate)
     if (patch.totalAmount !== undefined) {
-      if (doc.type === 'NFE') throw badRequest('VALOR_XML', 'O valor de uma NF-e vem do XML e não pode ser alterado.')
+      if (doc.type === 'NFE' || doc.type === 'NFSE') throw badRequest('VALOR_XML', 'O valor de uma nota lida do XML não pode ser alterado.')
       set.totalAmount = patch.totalAmount
     }
     if (patch.description !== undefined) set.description = patch.description
@@ -449,7 +571,7 @@ export async function updateDocumentDraft(
 
     // documento manual: limpa a pendência de dados quando o essencial foi preenchido
     const merged = { ...doc, ...set }
-    if (doc.type !== 'NFE' && merged.supplierId && merged.totalAmount && merged.issueDate) {
+    if (doc.type !== 'NFE' && doc.type !== 'NFSE' && merged.supplierId && merged.totalAmount && merged.issueDate) {
       set.issues = (doc.issues ?? []).filter((i) => i.code !== 'DADOS_MANUAIS')
     }
     await tx.update(documents).set(set).where(eq(documents.id, id))
@@ -493,15 +615,22 @@ export async function approveDocument(companyId: string, userId: string, id: str
     if (owned.length !== projectIds.length) throw badRequest('OBRA_INVALIDA', 'Obra não encontrada para esta construtora.')
 
     // títulos: usa o informado; senão as duplicatas do XML; senão vencimento padrão
-    const parsed = doc.raw as ParsedNfe | null
+    const parsed = doc.raw as ParsedFiscal | null
+    // NFS-e com retenção: o fornecedor recebe o líquido; o custo da obra continua sendo o total
+    const payable = parsed?.payableCents ?? doc.totalAmount
     let installments = input.installments?.length
       ? input.installments
       : parsed?.installments?.length
         ? parsed.installments.map((i) => ({ dueDate: i.dueDate, amount: i.amountCents }))
-        : [{ dueDate: addDays(doc.issueDate, DEFAULT_TERM_DAYS), amount: doc.totalAmount }]
+        : [{ dueDate: addDays(doc.issueDate, DEFAULT_TERM_DAYS), amount: payable }]
     const instSum = installments.reduce((a, b) => a + b.amount, 0)
-    if (instSum !== doc.totalAmount) {
-      throw badRequest('PARCELAS_DIVERGENTES', `A soma das parcelas (${formatBRL(instSum)}) precisa ser igual ao total (${formatBRL(doc.totalAmount)}).`)
+    if (instSum !== payable) {
+      throw badRequest(
+        'PARCELAS_DIVERGENTES',
+        payable === doc.totalAmount
+          ? `A soma das parcelas (${formatBRL(instSum)}) precisa ser igual ao total (${formatBRL(doc.totalAmount)}).`
+          : `A soma das parcelas (${formatBRL(instSum)}) precisa ser igual ao líquido a pagar ao prestador (${formatBRL(payable)}). As retenções não entram nas parcelas.`,
+      )
     }
     if (installments.some((i) => !/^\d{4}-\d{2}-\d{2}$/.test(i.dueDate) || i.amount <= 0)) {
       throw badRequest('PARCELA_INVALIDA', 'Parcelas precisam de data (AAAA-MM-DD) e valor positivo.')

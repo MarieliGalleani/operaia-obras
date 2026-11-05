@@ -5,7 +5,7 @@ import DocumentFlow from '@/components/DocumentFlow.vue'
 import DocumentReview from '@/components/DocumentReview.vue'
 import UploadZone from '@/components/UploadZone.vue'
 import { api } from '@/lib/api'
-import { DOC_STATUS, SEVERITY, SOURCE, brl, categoryLabel, date } from '@/lib/format'
+import { DOC_STATUS, SEVERITY, SOURCE, brl, categoryLabel, date, docTypeLabel } from '@/lib/format'
 import { toastError } from '@/lib/toast'
 import type { Issue } from '@/lib/types'
 import { useProjects } from '@/stores/projects'
@@ -129,7 +129,7 @@ const worstIssue = (issues: Issue[]) => issues.find((i) => i.severity === 'CRITI
     >
       <template #item.number="{ item }">
         <div class="font-weight-medium">{{ item.number ?? 's/ nº' }}</div>
-        <div class="text-caption muted text-no-wrap">{{ item.type === 'NFE' ? 'NF-e' : 'Arquivo' }} · {{ SOURCE[item.source] }}</div>
+        <div class="text-caption muted text-no-wrap">{{ docTypeLabel(item.type) }} · {{ SOURCE[item.source] }}</div>
       </template>
       <template #item.supplierName="{ item }">
         <div class="text-truncate" style="max-width: 240px">{{ item.supplierName ?? '—' }}</div>

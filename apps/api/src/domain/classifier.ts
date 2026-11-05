@@ -56,6 +56,43 @@ export function suggestCategory(input: {
   return { category: best[0], reason: 'palavras-chave e NCM dos itens' }
 }
 
+/**
+ * Itens da LC 116 mais comuns em obra → categoria de custo.
+ * Empreitada, reforma, demolição e instalações viram terceirizados; projeto, sondagem e
+ * fiscalização viram serviços; cessão de andaime e estruturas temporárias viram equipamentos.
+ */
+const SERVICE_CODE_CATEGORY: Record<string, CostCategory> = {
+  '07.02': 'TERCEIRIZADOS', // execução de obra por empreitada ou subempreitada
+  '07.04': 'TERCEIRIZADOS', // demolição
+  '07.05': 'TERCEIRIZADOS', // reparação, conservação e reforma
+  '07.06': 'TERCEIRIZADOS', // colocação de pisos, revestimentos, vidros
+  '07.08': 'TERCEIRIZADOS', // calafetação
+  '07.17': 'TERCEIRIZADOS', // escoramento e contenção de encostas
+  '07.01': 'SERVICOS', // engenharia, arquitetura
+  '07.03': 'SERVICOS', // projetos e estudos
+  '07.19': 'SERVICOS', // acompanhamento e fiscalização
+  '07.20': 'SERVICOS', // topografia, sondagem
+  '07.09': 'SERVICOS', // coleta e destinação de resíduos (caçamba)
+  '07.10': 'SERVICOS', // limpeza
+  '03.04': 'EQUIPAMENTOS', // cessão de estruturas temporárias
+  '03.05': 'EQUIPAMENTOS', // cessão de andaimes
+  '16.01': 'SERVICOS', // transporte
+  '16.02': 'SERVICOS',
+}
+
+export function suggestServiceCategory(input: {
+  supplierDefault?: CostCategory | null
+  serviceCode: string | null
+  description: string
+}): { category: CostCategory; reason: string } {
+  if (input.supplierDefault) return { category: input.supplierDefault, reason: 'padrão do fornecedor' }
+  const byCode = input.serviceCode ? SERVICE_CODE_CATEGORY[input.serviceCode] : undefined
+  if (byCode) return { category: byCode, reason: `item ${input.serviceCode} da lista de serviços` }
+  const byText = suggestCategory({ items: [{ description: input.description, totalCents: 1 }] })
+  if (byText.category !== 'OUTROS') return { category: byText.category, reason: 'palavras-chave da descrição do serviço' }
+  return { category: 'SERVICOS', reason: 'nota de serviço' }
+}
+
 export interface ProjectRef {
   id: string
   code: string

@@ -11,6 +11,7 @@ import bcrypt from 'bcryptjs'
 import { randomBytes } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { buildNfeXml } from '../dev/nfe-builder.js'
+import { buildNfseXml } from '../dev/nfse-builder.js'
 import { cnpjWithDigits } from '../domain/cnpj.js'
 import { approveDocument, ingestNfeXml, listPayables, registerPayment } from '../services/documents.js'
 import { approveOrder, createOrder } from '../services/purchases.js'
@@ -84,6 +85,13 @@ const dayISO = (daysAgo: number) => {
 const plusDays = (ymd: string, days: number) => new Date(new Date(`${ymd}T12:00:00-03:00`).getTime() + days * 86400000).toISOString().slice(0, 10)
 
 let nfNumber = 10200
+let nfseNumber = 1500
+/** Prestadores de serviço emitem NFS-e (padrão nacional, como em São Carlos desde 2026) */
+const SERVICE_SUPPLIERS: Partial<Record<SupplierKey, { code: string; inss: boolean; issRetained: boolean }>> = {
+  equipe: { code: '07.02', inss: true, issRetained: true }, // cessão de mão de obra: retém INSS 11% e ISS
+  montafacil: { code: '07.02', inss: true, issRetained: false }, // empreitada: retém INSS 11%
+  topo: { code: '07.20', inss: false, issRetained: false }, // topografia
+}
 async function importAndApprove(opts: {
   companyId: string
   userId: string
@@ -113,19 +121,42 @@ async function importAndApprove(opts: {
   const instAmounts = Array.from({ length: n }, (_, i) => (i < n - 1 ? Math.floor((total / n) * 100) / 100 : 0))
   instAmounts[n - 1] = Math.round((total - instAmounts.slice(0, -1).reduce((a, b) => a + b, 0)) * 100) / 100
 
-  const { xml } = buildNfeXml({
-    number: nfNumber++,
-    issueDate: `${issueYmd}T09:30:00-03:00`,
-    issuer: { cnpj: s.cnpj, name: s.name, tradeName: s.trade },
-    recipientCnpj: COMPANY_CNPJ,
-    recipientName: 'Construtora Alpha Ltda',
-    operation: opts.category === 'MATERIAIS' ? 'Venda de mercadoria' : 'Prestação de serviço',
-    items,
-    installments: instAmounts.map((a, i) => ({ dueDate: plusDays(issueYmd, 28 * (i + 1)), amount: a })),
-    extraInfo: `Obra: ${opts.projectName}. Entrega no canteiro.`,
-  })
+  const svc = SERVICE_SUPPLIERS[opts.supplier]
+  const { xml, fileName } = svc
+    ? {
+        xml: buildNfseXml({
+          layout: 'NACIONAL',
+          number: nfseNumber,
+          issueDate: `${issueYmd}T09:30:00-03:00`,
+          issuer: { cnpj: s.cnpj, name: s.name, tradeName: s.trade },
+          recipientCnpj: COMPANY_CNPJ,
+          recipientName: 'Construtora Alpha Ltda',
+          description: `${products[0].description} - ${opts.projectName}`,
+          serviceCode: svc.code,
+          services: Math.round(total * 100) / 100,
+          issRate: 0.03,
+          issRetained: svc.issRetained,
+          inss: svc.inss ? Math.round(total * 11) / 100 : 0,
+          extraInfo: `Obra: ${opts.projectName}`,
+        }).xml,
+        fileName: `NFSe-${s.trade}-${nfseNumber++}.xml`,
+      }
+    : {
+        xml: buildNfeXml({
+          number: nfNumber++,
+          issueDate: `${issueYmd}T09:30:00-03:00`,
+          issuer: { cnpj: s.cnpj, name: s.name, tradeName: s.trade },
+          recipientCnpj: COMPANY_CNPJ,
+          recipientName: 'Construtora Alpha Ltda',
+          operation: opts.category === 'MATERIAIS' ? 'Venda de mercadoria' : 'Prestação de serviço',
+          items,
+          installments: instAmounts.map((a, i) => ({ dueDate: plusDays(issueYmd, 28 * (i + 1)), amount: a })),
+          extraInfo: `Obra: ${opts.projectName}. Entrega no canteiro.`,
+        }).xml,
+        fileName: `NFe-${s.trade}-${nfNumber - 1}.xml`,
+      }
 
-  const res = await ingestNfeXml({ companyId: opts.companyId, userId: opts.userId, fileName: `NFe-${s.trade}-${nfNumber - 1}.xml`, content: Buffer.from(xml), source: rand() > 0.5 ? 'EMAIL' : 'UPLOAD' })
+  const res = await ingestNfeXml({ companyId: opts.companyId, userId: opts.userId, fileName, content: Buffer.from(xml), source: rand() > 0.5 ? 'EMAIL' : 'UPLOAD' })
   const doc = res.document
   await approveDocument(opts.companyId, opts.userId, doc.id, {
     allocations: [{ projectId: opts.projectId, category: opts.category, amount: doc.totalAmount! }],
@@ -423,7 +454,31 @@ async function main() {
     })
     await ingestNfeXml({ companyId: company.id, userId: admin.id, fileName: `NFe-Construluz-reenvio.xml`, content: Buffer.from(xml), source: 'EMAIL' })
   }
-  console.log('✔ 3 notas na fila de revisão (2 sem obra, 1 possível duplicidade)')
+  // NFS-e na fila: medição da empreiteira com retenção de INSS e ISS, e uma no modelo ABRASF de Ibaté
+  for (const n of [
+    { layout: 'NACIONAL' as const, sup: 'equipe' as SupplierKey, services: 18_400, inss: true, iss: true, text: 'Medição 4 - alvenaria e reboco - Residencial Aurora', obra: 'Obra: OBR-001' },
+    { layout: 'ABRASF' as const, sup: 'montafacil' as SupplierKey, services: 6_250, inss: true, iss: false, text: 'Instalações hidráulicas do galpão - 2ª etapa', obra: 'Galpão Logístico Ibaté', city: '3519303' },
+  ]) {
+    const s = SUPPLIERS[n.sup]
+    const { xml } = buildNfseXml({
+      layout: n.layout,
+      number: nfseNumber++,
+      issueDate: `${dayISO(0)}T10:20:00-03:00`,
+      cityCode: n.city,
+      issuer: { cnpj: s.cnpj, name: s.name, tradeName: s.trade },
+      recipientCnpj: COMPANY_CNPJ,
+      recipientName: 'Construtora Alpha Ltda',
+      description: n.text,
+      serviceCode: '07.02',
+      services: n.services,
+      issRate: 0.03,
+      issRetained: n.iss,
+      inss: n.inss ? Math.round(n.services * 11) / 100 : 0,
+      extraInfo: n.obra,
+    })
+    await ingestNfeXml({ companyId: company.id, userId: admin.id, fileName: `NFSe-${s.trade}-${nfseNumber - 1}.xml`, content: Buffer.from(xml), source: 'EMAIL' })
+  }
+  console.log('✔ 5 notas na fila de revisão (2 sem obra, 1 possível duplicidade, 2 NFS-e com retenção)')
   console.log(`\nLogin: admin@alpha.com.br / operaia123\nChave de integração: ${company.apiKey}`)
 }
 

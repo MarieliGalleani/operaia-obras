@@ -43,7 +43,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 ## Ainda em aberto do plano de validação
 - [x] Importação de obras e orçamento por planilha (modelo .xlsx, também .csv; prévia com erro por linha antes de gravar)
 - [ ] Medição de erros por campo nos documentos reais (meta: ≥ 95% nos campos críticos)
-- [ ] NFS-e (serviços): padrões municipais mais comuns na região dos pilotos
+- [x] NFS-e (serviços): padrão nacional (São Carlos e municípios que aderiram), ABRASF 1.0/2.x (sistemas municipais antigos) e Nota Paulistana; retenções (ISS, INSS, IR, PIS/COFINS/CSLL) e líquido ao prestador
 - [x] Estorno de pagamento (com motivo; fica no histórico do título e na auditoria)
 - [x] Armazenamento de arquivos em object storage (S3-compatível: Cloudflare R2, Backblaze B2, AWS), com cópia dos arquivos existentes e conferência
 - [ ] Métrica de margem de contribuição por cliente
@@ -71,3 +71,6 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - Estorno não apaga o pagamento: marca como estornado, com motivo e quem fez, e devolve o valor ao título. Depois do estorno a nota pode ser cancelada, se for o caso.
 - Pacote do contador: notas APROVADAS pela data de emissão; XML/ com os originais, PDF e fotos/, notas.csv e lancamentos-por-obra.csv. Até 3.000 notas ou 400 MB por pacote.
 - Arquivos: o original fica sempre no armazenamento do sistema (disco ou S3, bucket privado, tudo passa pela API). Drive da construtora (item 9) será só cópia.
+- NFS-e: custo da obra = valor do serviço − desconto incondicional; título a pagar = líquido (custo − retenções − desconto condicionado). As retenções a construtora recolhe em guia e aparecem por nota no pacote do contador. Quando a nota informa o líquido, ele manda; retenção que a nota soma mas não detalha vira "outras".
+- NFS-e municipal (sem chave nacional) não duplica pela chave interna município + prestador + número. Mesmo número só é duplicidade dentro do mesmo tipo (NF-e 123 ≠ NFS-e 123).
+- NFS-e não gera alerta de preço unitário (serviço é descrito em texto livre). Categoria sai do item da LC 116 (07.02 empreitada → terceirizados; 07.20 topografia → serviços; 03.05 andaime → equipamentos).

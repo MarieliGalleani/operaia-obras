@@ -2,7 +2,7 @@
 /**
  * Miniatura da nota ao lado dos dados.
  * - PDF ou foto enviados: mostra o próprio arquivo.
- * - NF-e em XML (sem PDF): desenha uma DANFE simplificada a partir dos dados do XML.
+ * - NF-e ou NFS-e em XML (sem PDF): desenha uma DANFE/DANFSe simplificada a partir dos dados do XML.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { api, getToken } from '@/lib/api'
@@ -16,7 +16,7 @@ const kind = computed<'pdf' | 'image' | 'danfe' | 'none'>(() => {
   const name = props.doc.fileName?.toLowerCase() ?? ''
   if (props.doc.hasFile && name.endsWith('.pdf')) return 'pdf'
   if (props.doc.hasFile && /\.(jpe?g|png|webp)$/.test(name)) return 'image'
-  if (props.doc.type === 'NFE') return 'danfe'
+  if (props.doc.type === 'NFE' || props.doc.type === 'NFSE') return 'danfe'
   return 'none'
 })
 
@@ -41,7 +41,20 @@ async function loadFile() {
 watch(() => props.doc.id, loadFile, { immediate: true })
 onBeforeUnmount(() => blobUrl.value && URL.revokeObjectURL(blobUrl.value))
 
-const keyGroups = computed(() => (props.doc.accessKey ?? '').replace(/\D/g, '').match(/.{1,4}/g)?.join(' ') ?? '')
+const isService = computed(() => props.doc.type === 'NFSE')
+const svc = computed(() => props.doc.service)
+const boxTitle = computed(() => (isService.value ? 'DANFSe' : 'DANFE'))
+const boxSub = computed(() => (isService.value ? 'NFS-e' : 'NF-e'))
+const group4 = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '').match(/.{1,4}/g)?.join(' ') ?? ''
+const keyGroups = computed(() =>
+  isService.value
+    ? svc.value?.nationalKey
+      ? group4(svc.value.nationalKey)
+      : svc.value?.verificationCode
+        ? `Código de verificação ${svc.value.verificationCode}`
+        : ''
+    : group4(props.doc.accessKey),
+)
 // "código de barras" decorativo, estável por chave
 const bars = computed(() => {
   const k = (props.doc.accessKey ?? props.doc.id).replace(/\D/g, '') || '1234567890'
@@ -73,8 +86,8 @@ function openOriginal() {
           <span>CNPJ {{ issuerCnpj }}</span>
         </div>
         <div class="d-box">
-          <b>DANFE</b>
-          <span>NF-e</span>
+          <b>{{ boxTitle }}</b>
+          <span>{{ boxSub }}</span>
           <span>Nº {{ doc.number ?? '—' }}</span>
           <span v-if="doc.series">Série {{ doc.series }}</span>
         </div>
@@ -88,7 +101,8 @@ function openOriginal() {
         </div>
         <div v-if="doc.items.length > items.length" class="d-more">+ {{ doc.items.length - items.length }} item(ns)</div>
       </div>
-      <div class="d-total"><span>Valor total</span><b>{{ brl(doc.totalAmount) }}</b></div>
+      <div class="d-total"><span>{{ isService ? 'Valor do serviço' : 'Valor total' }}</span><b>{{ brl(doc.totalAmount) }}</b></div>
+      <div v-if="svc?.retainedCents" class="d-row"><span>Líquido</span><b>{{ brl(svc.netCents) }}</b></div>
     </div>
     <div class="zoom-hint"><v-icon size="16">mdi-magnify-plus-outline</v-icon></div>
   </div>
@@ -96,7 +110,7 @@ function openOriginal() {
   <v-dialog v-model="zoom" max-width="760">
     <v-card>
       <v-card-title class="d-flex align-center py-3 px-5">
-        <span class="text-subtitle-1 font-weight-bold">{{ kind === 'danfe' ? 'Representação da NF-e' : doc.fileName }}</span>
+        <span class="text-subtitle-1 font-weight-bold">{{ kind === 'danfe' ? `Representação da ${boxSub}` : doc.fileName }}</span>
         <v-spacer />
         <v-btn v-if="doc.hasFile" variant="text" size="small" prepend-icon="mdi-open-in-new" @click="openOriginal">Abrir original</v-btn>
         <v-btn icon="mdi-close" variant="text" size="small" @click="zoom = false" />
@@ -112,8 +126,8 @@ function openOriginal() {
               <span>CNPJ {{ issuerCnpj }}</span>
             </div>
             <div class="d-box">
-              <b>DANFE</b>
-              <span>NF-e</span>
+              <b>{{ boxTitle }}</b>
+              <span>{{ boxSub }}</span>
               <span>Nº {{ doc.number ?? '—' }}</span>
               <span v-if="doc.series">Série {{ doc.series }}</span>
             </div>
@@ -128,11 +142,13 @@ function openOriginal() {
             </div>
           </div>
           <div v-if="doc.extraInfo" class="d-extra">{{ doc.extraInfo }}</div>
-          <div class="d-total"><span>Valor total</span><b>{{ brl(doc.totalAmount) }}</b></div>
+          <div class="d-total"><span>{{ isService ? 'Valor do serviço' : 'Valor total' }}</span><b>{{ brl(doc.totalAmount) }}</b></div>
+          <div v-if="svc?.retainedCents" class="d-row"><span>Retenções</span><b>− {{ brl(svc.retainedCents) }}</b></div>
+          <div v-if="svc?.retainedCents" class="d-row"><span>Líquido ao prestador</span><b>{{ brl(svc.netCents) }}</b></div>
         </div>
         <div v-else class="text-body-2 muted pa-6 text-center">Não foi possível carregar o arquivo.</div>
         <div v-if="kind === 'danfe'" class="text-caption muted mt-3">
-          Desenhada a partir do XML da nota, que é o documento fiscal válido. Não substitui a DANFE impressa pelo fornecedor.
+          Desenhada a partir do XML da nota, que é o documento fiscal válido. Não substitui a {{ boxTitle }} emitida pelo {{ isService ? 'prestador' : 'fornecedor' }}.
         </div>
       </v-card-text>
     </v-card>

@@ -150,7 +150,7 @@ const state = computed(() => {
           <v-chip v-if="state" :color="state.color" variant="tonal" :prepend-icon="state.icon">{{ state.text }}</v-chip>
         </div>
         <div class="text-body-2 muted mt-1">
-          {{ forPlatform ? 'A caixa onde os fornecedores desta construtora mandam as NF-e.' : 'A caixa onde os fornecedores mandam as NF-e.' }}
+          {{ forPlatform ? 'A caixa onde os fornecedores desta construtora mandam as notas (NF-e e NFS-e).' : 'A caixa onde os fornecedores mandam as notas (NF-e e NFS-e).' }}
           O sistema lê os e-mails novos a cada 2 minutos e importa os XMLs sozinho.
         </div>
       </div>
@@ -181,7 +181,7 @@ const state = computed(() => {
     <template v-else-if="!editing">
       <div class="empty mt-4">
         <div class="text-body-2">
-          Crie uma caixa só para notas (por exemplo <strong>notas@suaconstrutora.com.br</strong> ou um Gmail novo), peça aos fornecedores para mandarem a NF-e para ela e conecte aqui.
+          Crie uma caixa só para notas (por exemplo <strong>notas@suaconstrutora.com.br</strong> ou um Gmail novo), peça aos fornecedores e prestadores para mandarem o XML da nota para ela e conecte aqui.
         </div>
         <v-btn color="primary" class="mt-3" prepend-icon="mdi-email-plus-outline" @click="startEdit">Conectar caixa de e-mail</v-btn>
       </div>

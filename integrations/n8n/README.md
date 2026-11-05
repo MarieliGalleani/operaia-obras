@@ -2,7 +2,7 @@
 
 > O caminho padrão agora é o **E-mail de notas** dentro do sistema (Configurações), sem n8n. Use este fluxo só se a construtora já tiver uma automação no n8n.
 
-Cada construtora tem uma caixa de e-mail só para notas, por exemplo `notas@construtora.com.br` ou um Gmail dedicado. Os fornecedores mandam a NF-e para lá, como já fazem hoje. O n8n lê a caixa a cada minuto, separa os anexos `.xml` e envia ao OperaIA Obras. PDFs e imagens são ignorados nesta versão. Se o mesmo XML chegar duas vezes, ele não é duplicado.
+Cada construtora tem uma caixa de e-mail só para notas, por exemplo `notas@construtora.com.br` ou um Gmail dedicado. Os fornecedores mandam a NF-e (produto) ou a NFS-e (serviço) para lá, como já fazem hoje. O n8n lê a caixa a cada minuto, separa os anexos `.xml` e envia ao OperaIA Obras. PDFs e imagens são ignorados nesta versão. Se o mesmo XML chegar duas vezes, ele não é duplicado.
 
 ## Configurar (uma vez por construtora)
 

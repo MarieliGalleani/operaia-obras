@@ -25,8 +25,25 @@ export function cnpjWithDigits(base12: string): string {
   return `${b}${d1}${d2}`
 }
 
+/** CPF (prestador pessoa física em NFS-e). */
+export function isValidCpf(value: string | null | undefined): boolean {
+  const c = onlyDigits(value)
+  if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false
+  const dv = (len: number) => {
+    const sum = c
+      .slice(0, len)
+      .split('')
+      .reduce((acc, d, i) => acc + Number(d) * (len + 1 - i), 0)
+    const r = (sum * 10) % 11
+    return r === 10 ? 0 : r
+  }
+  return dv(9) === Number(c[9]) && dv(10) === Number(c[10])
+}
+
+/** Formata CNPJ (e CPF, quando o prestador é pessoa física). */
 export function formatCnpj(value: string): string {
   const c = onlyDigits(value)
+  if (c.length === 11) return c.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
   if (c.length !== 14) return value
   return c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
 }

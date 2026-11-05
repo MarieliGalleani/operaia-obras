@@ -13,6 +13,7 @@ import { hasMoto, startFakeS3 } from './dev/fake-s3.js'
 import { STORAGE_DIR, diskStorage, s3Storage, setStorage, storage } from './services/storage.js'
 import { cnpjWithDigits } from './domain/cnpj.js'
 import { buildNfeXml } from './dev/nfe-builder.js'
+import { buildNfseXml } from './dev/nfse-builder.js'
 
 const app = await buildApp()
 const rnd = () => String(Math.floor(Math.random() * 1e8)).padStart(8, '0')
@@ -42,7 +43,8 @@ async function makeCompany(cnpj: string, email: string) {
   const [c] = await db.insert(companies).values({ name: `Teste ${cnpj}`, cnpj, apiKey: `test_${randomBytes(8).toString('hex')}` }).returning()
   createdCompanies.push(c.id)
   await db.insert(users).values({ companyId: c.id, name: 'Teste', email, passwordHash: await bcrypt.hash('senha123', 4), role: 'ADMIN' })
-  const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'senha123' } })
+  // IP próprio por construtora de teste: o limite de tentativas de login é por IP
+  const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'senha123' }, remoteAddress: `10.9.${createdCompanies.length}.1` })
   return { company: c, token: res.json().token as string }
 }
 
@@ -244,6 +246,127 @@ describe('fluxo de documentos', () => {
     expect(d.kpis.appropriatedCost).toBe(11_000_00)
     expect(d.kpis.openPayables).toBe(7_000_00)
     expect(d.projects.find((p: any) => p.id === projectA).committedPct).toBe(90)
+  })
+})
+
+describe('notas de serviço (NFS-e)', () => {
+  const cnpj = cnpjWithDigits(rnd() + '0001')
+  const prestador = cnpjWithDigits(rnd() + '0001')
+  let tk = ''
+  let apiKey = ''
+  let obra = ''
+  let docId = ''
+  const nfse = (n: number, opts: Partial<Parameters<typeof buildNfseXml>[0]> = {}) =>
+    buildNfseXml({
+      layout: 'NACIONAL',
+      number: n,
+      issueDate: new Date().toISOString().slice(0, 10) + 'T09:00:00-03:00',
+      issuer: { cnpj: prestador, name: 'Empreiteira Teste Ltda' },
+      recipientCnpj: cnpj,
+      description: 'Mão de obra de alvenaria - medição 2',
+      serviceCode: '07.02',
+      services: 10000,
+      issRate: 0.03,
+      issRetained: true,
+      inss: 1100,
+      obra: 'S-01',
+      ...opts,
+    }).xml
+
+  beforeAll(async () => {
+    const c = await makeCompany(cnpj, `t${rnd()}@teste.com`)
+    tk = c.token
+    apiKey = c.company.apiKey!
+    ;[{ id: obra }] = await db.insert(projects).values({ companyId: c.company.id, code: 'S-01', name: 'Edifício Serviço', budgetTotal: 500_000_00 }).returning()
+  })
+
+  it('lê a NFS-e nacional: custo bruto, retenções e líquido; acha a obra pelo código', async () => {
+    const r = (await upload(nfse(77), 'nfse.xml', tk)).json().results[0]
+    expect(r.status).toBe('CRIADO')
+    const d = r.document
+    expect(d.type).toBe('NFSE')
+    expect(d.number).toBe('77')
+    expect(d.accessKey).toHaveLength(50)
+    expect(d.totalAmount).toBe(10_000_00)
+    expect(d.payableAmount).toBe(8_600_00)
+    expect(d.service).toMatchObject({ layout: 'NACIONAL', serviceCode: '07.02', issRetained: true, retainedCents: 1_400_00, netCents: 8_600_00 })
+    expect(d.service.retentions).toMatchObject({ iss: 300_00, inss: 1_100_00 })
+    expect(d.suggestedProjectId).toBe(obra)
+    expect(d.category).toBe('TERCEIRIZADOS')
+    expect(d.status).toBe('EM_REVISAO')
+    const codes = d.issues.map((i: any) => i.code)
+    expect(codes).toContain('RETENCOES')
+    expect(codes).not.toContain('CHAVE_INVALIDA')
+    expect(codes).not.toContain('SEM_PROTOCOLO')
+    expect(d.items).toHaveLength(1)
+    docId = r.documentId
+  })
+
+  it('reenvio da mesma NFS-e não duplica', async () => {
+    const r = (await upload(nfse(77), 'nfse-de-novo.xml', tk)).json().results[0]
+    expect(r.status).toBe('JA_IMPORTADO')
+    expect(r.documentId).toBe(docId)
+  })
+
+  it('títulos somam o líquido; o custo da obra fica com o total', async () => {
+    const alloc = [{ projectId: obra, category: 'TERCEIRIZADOS', amount: 10_000_00 }]
+    const bad = await api('POST', `/api/documents/${docId}/approve`, { allocations: alloc, installments: [{ dueDate: '2030-01-10', amount: 10_000_00 }] }, tk)
+    expect(bad.statusCode).toBe(400)
+    expect(bad.json().code).toBe('PARCELAS_DIVERGENTES')
+    expect(bad.json().message).toContain('líquido')
+    const ok = await api('POST', `/api/documents/${docId}/approve`, { allocations: alloc }, tk)
+    expect(ok.statusCode).toBe(200)
+    expect(ok.json().payables.map((p: any) => p.amount)).toEqual([8_600_00])
+    expect(ok.json().allocations.map((a: any) => a.amount)).toEqual([10_000_00])
+    const d = (await api('GET', '/api/dashboard', undefined, tk)).json()
+    expect(d.kpis.appropriatedCost).toBe(10_000_00)
+    expect(d.kpis.openPayables).toBe(8_600_00)
+  })
+
+  it('valor de NFS-e não pode ser editado à mão', async () => {
+    const r = (await upload(nfse(78, { issRetained: false, inss: 0 }), 'nfse78.xml', tk)).json().results[0]
+    const res = await api('PATCH', `/api/documents/${r.documentId}`, { totalAmount: 1 }, tk)
+    expect(res.statusCode).toBe(400)
+    expect(res.json().code).toBe('VALOR_XML')
+    expect(r.document.payableAmount).toBe(r.document.totalAmount)
+  })
+
+  it('ABRASF cancelada vira pendência crítica; NF-e e NFS-e com o mesmo número não são duplicidade', async () => {
+    await upload(nfe(90, { issuer: { cnpj: prestador, name: 'Empreiteira Teste Ltda' }, recipientCnpj: cnpj, extraInfo: 'Obra S-01' }), 'nfe90.xml', tk)
+    const r = (await upload(nfse(90, { layout: 'ABRASF', cancelled: true, services: 4321 }), 'abrasf.xml', tk)).json().results[0]
+    expect(r.status).toBe('CRIADO')
+    const codes = r.document.issues.map((i: any) => i.code)
+    expect(codes).toContain('NFSE_CANCELADA')
+    expect(codes).not.toContain('POSSIVEL_DUPLICIDADE')
+  })
+
+  it('pacote do contador traz as retenções e o líquido de cada NFS-e', async () => {
+    const { unzipSync, strFromU8 } = await import('fflate')
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+    const r = await api('GET', `/api/exports/notas-contador.zip?from=${today}&to=${today}`, undefined, tk)
+    expect(r.statusCode).toBe(200)
+    const zip = unzipSync(new Uint8Array(r.rawPayload))
+    const lines = strFromU8(zip['notas.csv']).replace('\ufeff', '').trim().split('\r\n')
+    expect(lines[0]).toContain('ISS retido;INSS retido;IR retido;PIS/COFINS/CSLL retidos;Valor líquido pago')
+    const row = lines.find((l) => l.includes(';NFS-e;77;'))!
+    expect(row).toContain('10000,00;300,00;1100,00;0,00;0,00;8600,00')
+    expect(Object.keys(zip).some((f) => f.startsWith('XML/') && f.includes('NFSe-77'))).toBe(true)
+    expect(strFromU8(zip['LEIA-ME.txt'])).toContain('Retenções nas NFS-e')
+  })
+
+  it('chega pela integração (n8n/e-mail) no padrão da Nota Paulistana', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/integrations/nfe',
+      headers: { 'x-api-key': apiKey, 'content-type': 'application/xml', 'x-filename': 'nfse-sp.xml' },
+      payload: nfse(5500, { layout: 'SP', issRetained: false, inss: 1100 }),
+    })
+    expect(res.statusCode).toBe(200)
+    const r = res.json().results[0]
+    expect(r.status).toBe('CRIADO')
+    const d = (await api('GET', `/api/documents/${r.documentId}`, undefined, tk)).json()
+    expect(d.type).toBe('NFSE')
+    expect(d.payableAmount).toBe(8_900_00)
   })
 })
 

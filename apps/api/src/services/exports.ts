@@ -22,7 +22,8 @@ const dateBR = (d: Date | string | null) =>
   d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : ''
 /** CNPJ com máscara e chave de acesso em blocos de 4 (como no DANFE): o Excel mantém como texto. */
 const fmtCnpj = (v: string | null) => (v && /^\d{14}$/.test(v) ? v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : (v ?? ''))
-const fmtKey = (v: string | null) => (v ? v.replace(/(\d{4})(?=\d)/g, '$1 ') : '')
+// chave interna da NFS-e municipal (NFSE-<município>-<prestador>-<número>) não é chave fiscal: fica em branco
+const fmtKey = (v: string | null) => (v && !v.startsWith('NFSE-') ? v.replace(/(\d{4})(?=\d)/g, '$1 ') : '')
 const dateISO = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : 'sem-data')
 const toCsv = (header: string[], rows: unknown[][]) => BOM + [header, ...rows].map((r) => r.map(cell).join(';')).join('\r\n') + '\r\n'
 
@@ -140,6 +141,8 @@ export async function exportAccountantZip(companyId: string, filters: { from: st
       projects: sql<string | null>`(SELECT string_agg(DISTINCT p.code || ' ' || p.name, ', ') FROM allocations a JOIN projects p ON p.id = a.project_id WHERE a.document_id = ${documents.id})`,
       categories: sql<string[] | null>`(SELECT array_agg(DISTINCT a.category::text) FROM allocations a WHERE a.document_id = ${documents.id})`,
       orderNumber: sql<number | null>`(SELECT po.number FROM purchase_orders po WHERE po.id = ${documents.purchaseOrderId})`,
+      /** NFS-e: retenções, líquido e chave nacional */
+      nfse: sql<{ retentions: Record<string, number>; netCents: number; nationalKey: string | null } | null>`${documents.raw}->'nfse'`,
     })
     .from(documents)
     .leftJoin(suppliers, eq(suppliers.id, documents.supplierId))
@@ -157,6 +160,7 @@ export async function exportAccountantZip(companyId: string, filters: { from: st
     return name
   }
   let bytes = 0
+  let retainedTotal = 0
   const index: unknown[][] = []
   for (const d of docs) {
     const ext = (d.fileName?.match(/\.[A-Za-z0-9]{2,5}$/)?.[0] ?? '').toLowerCase()
@@ -167,10 +171,14 @@ export async function exportAccountantZip(companyId: string, filters: { from: st
     if (content) {
       bytes += content.length
       if (bytes > MAX_BYTES) throw badRequest('PACOTE_GRANDE', 'O pacote passou de 400 MB. Baixe um período menor.')
-      const base = `${dateISO(d.issueDate)}_NF-${slug(d.number, 15)}_${slug(d.supplierName, 30)}`
+      const base = `${dateISO(d.issueDate)}_${d.type === 'NFSE' ? 'NFSe' : 'NF'}-${slug(d.number, 15)}_${slug(d.supplierName, 30)}`
       saved = unique(`${isXml ? 'XML' : 'PDF e fotos'}/${base}${ext || '.bin'}`)
       files[saved] = [new Uint8Array(content), { level: isXml ? 6 : 0, mtime: d.issueDate ?? new Date() }]
     }
+    const r = d.nfse?.retentions ?? {}
+    const ret = (k: string) => (d.nfse ? money(r[k] ?? 0) : '')
+    const fedOthers = (r.pis ?? 0) + (r.cofins ?? 0) + (r.csll ?? 0) + (r.outras ?? 0)
+    retainedTotal += d.nfse ? (r.iss ?? 0) + (r.inss ?? 0) + (r.ir ?? 0) + fedOthers : 0
     index.push([
       dateBR(d.issueDate),
       d.type === 'NFE' ? 'NF-e' : d.type === 'NFSE' ? 'NFS-e' : d.type === 'RECIBO' ? 'Recibo' : 'Outro',
@@ -179,18 +187,23 @@ export async function exportAccountantZip(companyId: string, filters: { from: st
       d.supplierName,
       fmtCnpj(d.supplierCnpj),
       money(d.totalAmount ?? 0),
+      ret('iss'),
+      ret('inss'),
+      ret('ir'),
+      d.nfse ? money(fedOthers) : '',
+      money(d.nfse ? d.nfse.netCents : (d.totalAmount ?? 0)),
       d.projects,
       (d.categories ?? []).map(categoryLabel).join(', '),
       d.orderNumber ? `PC-${String(d.orderNumber).padStart(4, '0')}` : '',
       d.description,
       dateBR(d.approvedAt),
       saved || 'arquivo original não guardado',
-      fmtKey(d.accessKey),
+      d.type === 'NFSE' ? fmtKey(d.nfse?.nationalKey ?? null) : fmtKey(d.accessKey),
     ])
   }
   const enc = new TextEncoder()
   files['notas.csv'] = enc.encode(
-    toCsv(['Emissão', 'Tipo', 'Número', 'Série', 'Fornecedor', 'CNPJ fornecedor', 'Valor', 'Obra(s)', 'Categoria(s)', 'Pedido', 'Descrição', 'Aprovada em', 'Arquivo no pacote', 'Chave de acesso'], index),
+    toCsv(['Emissão', 'Tipo', 'Número', 'Série', 'Fornecedor', 'CNPJ fornecedor', 'Valor', 'ISS retido', 'INSS retido', 'IR retido', 'PIS/COFINS/CSLL retidos', 'Valor líquido pago', 'Obra(s)', 'Categoria(s)', 'Pedido', 'Descrição', 'Aprovada em', 'Arquivo no pacote', 'Chave de acesso'], index),
   )
   files['lancamentos-por-obra.csv'] = enc.encode(await exportAllocations(companyId, filters))
   const total = docs.reduce((a, d) => a + (d.totalAmount ?? 0), 0)
@@ -199,9 +212,10 @@ export async function exportAccountantZip(companyId: string, filters: { from: st
       'OperaIA Obras — notas aprovadas para a contabilidade',
       `Período (data de emissão): ${dateBR(new Date(`${filters.from}T12:00:00-03:00`))} a ${dateBR(new Date(`${filters.to}T12:00:00-03:00`))}`,
       `Notas: ${docs.length} · Valor total: ${(total / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+      ...(retainedTotal ? [`Retenções nas NFS-e (a construtora recolhe em guia): ${(retainedTotal / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} — detalhe por nota em notas.csv`] : []),
       `Gerado em: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
       '',
-      'XML/            arquivos XML originais das NF-e',
+      'XML/            arquivos XML originais das NF-e e NFS-e',
       'PDF e fotos/    recibos, notas em PDF e fotos enviadas',
       'notas.csv       uma linha por nota (abre no Excel)',
       'lancamentos-por-obra.csv   custo apropriado por obra e categoria',

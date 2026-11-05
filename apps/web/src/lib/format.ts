@@ -24,7 +24,14 @@ export const pct = (v?: number | null) => (v == null ? '—' : `${v.toLocaleStri
 export const date = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—')
 export const ymd = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 
-export const cnpj = (v?: string | null) => (v && v.length === 14 ? v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : v ?? '—')
+export const cnpj = (v?: string | null) =>
+  v && v.length === 14
+    ? v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+    : v && v.length === 11
+      ? v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+      : v ?? '—'
+/** Rótulo curto do tipo de documento */
+export const docTypeLabel = (t: string) => (t === 'NFE' ? 'NF-e' : t === 'NFSE' ? 'NFS-e' : t === 'RECIBO' ? 'Recibo' : 'Arquivo')
 
 /** "12.500,50" → centavos */
 export function parseBRL(input: string | number | null | undefined): number {

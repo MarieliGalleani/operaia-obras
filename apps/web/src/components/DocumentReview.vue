@@ -13,6 +13,7 @@ import {
   centsToInput,
   cnpj,
   date,
+  docTypeLabel,
   parseBRL,
   type CostCategory,
 } from '@/lib/format'
@@ -45,8 +46,16 @@ const manual = ref({ supplierCnpj: '', supplierName: '', number: '', issueDate: 
 const showItems = ref(false)
 
 const editable = computed(() => doc.value && ['RECEBIDO', 'EM_REVISAO'].includes(doc.value.status))
-const isManual = computed(() => doc.value && doc.value.type !== 'NFE')
+const isManual = computed(() => doc.value && doc.value.type !== 'NFE' && doc.value.type !== 'NFSE')
 const total = computed(() => doc.value?.totalAmount ?? 0)
+// NFS-e com retenção: as parcelas somam o líquido; o custo da obra é o total
+const payable = computed(() => doc.value?.payableAmount ?? total.value)
+const svc = computed(() => doc.value?.service ?? null)
+const RET_LABEL: Record<string, string> = { iss: 'ISS retido', inss: 'INSS retido', ir: 'IR retido', csll: 'CSLL retida', pis: 'PIS retido', cofins: 'COFINS retida', outras: 'Outras retenções' }
+const retentionRows = computed(() =>
+  svc.value ? Object.entries(svc.value.retentions).filter(([, v]) => v > 0).map(([k, v]) => ({ label: RET_LABEL[k] ?? k, amount: v })) : [],
+)
+const LAYOUT_LABEL = { NACIONAL: 'padrão nacional', ABRASF: 'padrão municipal (ABRASF)', SP: 'Nota Paulistana' } as const
 // "sem pedido" já aparece no quadro do pedido de compra
 const shownIssues = computed(() => doc.value?.issues.filter((i) => i.code !== 'SEM_PEDIDO') ?? [])
 const critical = computed(() => doc.value?.issues.filter((i) => i.severity === 'CRITICO') ?? [])
@@ -61,7 +70,7 @@ const canSubmit = computed(
     allocRows.value.every((r) => r.projectId && parseBRL(r.amount) > 0) &&
     allocSum.value === total.value &&
     instRows.value.every((r) => r.dueDate && parseBRL(r.amount) > 0) &&
-    instSum.value === total.value &&
+    instSum.value === payable.value &&
     (!critical.value.length || ack.value),
 )
 
@@ -74,7 +83,7 @@ function resetForm(d: DocumentDetail) {
   allocRows.value = [{ projectId: d.suggestedProjectId, category: d.category ?? 'MATERIAIS', amount: centsToInput(d.totalAmount ?? 0) }]
   instRows.value = d.installmentsFromXml.length
     ? d.installmentsFromXml.map((i) => ({ dueDate: i.dueDate, amount: centsToInput(i.amountCents) }))
-    : [{ dueDate: addDays(d.issueDate, 30), amount: centsToInput(d.totalAmount ?? 0) }]
+    : [{ dueDate: addDays(d.issueDate, 30), amount: centsToInput(d.payableAmount ?? d.totalAmount ?? 0) }]
   notes.value = ''
   ack.value = false
   manual.value = {
@@ -117,7 +126,7 @@ function splitEvenly() {
 }
 function addInstallment() {
   const last = instRows.value[instRows.value.length - 1]
-  instRows.value.push({ dueDate: addDays(last?.dueDate ?? doc.value?.issueDate ?? null, 30), amount: centsToInput(Math.max(total.value - instSum.value, 0)) })
+  instRows.value.push({ dueDate: addDays(last?.dueDate ?? doc.value?.issueDate ?? null, 30), amount: centsToInput(Math.max(payable.value - instSum.value, 0)) })
 }
 
 async function saveManual() {
@@ -235,7 +244,7 @@ async function openFile() {
       <v-card-title class="d-flex align-center ga-3 py-4 px-6">
         <div>
           <div class="text-h6 font-weight-bold">
-            {{ doc.type === 'NFE' ? 'NF-e' : 'Documento' }} {{ doc.number ? `nº ${doc.number}` : '' }}
+            {{ isManual ? 'Documento' : docTypeLabel(doc.type) }} {{ doc.number ? `nº ${doc.number}` : '' }}
             <v-chip :color="DOC_STATUS[doc.status].color" variant="tonal" class="ml-2">{{ DOC_STATUS[doc.status].label }}</v-chip>
           </div>
           <div class="text-caption muted">Recebida via {{ SOURCE[doc.source] }} em {{ date(doc.createdAt) }} · {{ doc.fileName }}</div>
@@ -274,13 +283,18 @@ async function openFile() {
                   <v-chip v-if="doc.supplier?.status === 'PENDENTE'" color="warning" variant="tonal" class="ml-1">não homologado</v-chip>
                   <v-chip v-if="doc.supplier?.status === 'BLOQUEADO'" color="error" variant="tonal" class="ml-1">bloqueado</v-chip>
                 </dd>
-                <dt>CNPJ</dt>
+                <dt>{{ (doc.supplier?.cnpj ?? doc.issuer?.cnpj)?.length === 11 ? 'CPF' : 'CNPJ' }}</dt>
                 <dd>{{ cnpj(doc.supplier?.cnpj ?? doc.issuer?.cnpj) }}</dd>
                 <dt>Nº da nota</dt>
-                <dd>{{ doc.number ?? '—' }}{{ doc.series ? ` · série ${doc.series}` : '' }}</dd>
+                <dd>
+                  {{ doc.number ?? '—' }}{{ doc.series ? ` · série ${doc.series}` : '' }}
+                  <div v-if="svc" class="text-caption muted">{{ LAYOUT_LABEL[svc.layout] }}<template v-if="svc.cityName"> · {{ svc.cityName }}</template><template v-if="svc.verificationCode"> · verificação {{ svc.verificationCode }}</template></div>
+                </dd>
                 <dt>Emissão</dt>
-                <dd>{{ date(doc.issueDate) }}</dd>
-                <dt>Valor</dt>
+                <dd>{{ date(doc.issueDate) }}<span v-if="svc?.competence" class="text-caption muted"> · competência {{ svc.competence.slice(5, 7) }}/{{ svc.competence.slice(0, 4) }}</span></dd>
+                <dt v-if="svc?.serviceCode || svc?.serviceLabel">Serviço</dt>
+                <dd v-if="svc?.serviceCode || svc?.serviceLabel" class="text-caption">{{ [svc.serviceCode ? `item ${svc.serviceCode}` : null, svc.serviceLabel].filter(Boolean).join(' · ') }}</dd>
+                <dt>{{ svc ? 'Valor do serviço' : 'Valor' }}</dt>
                 <dd class="font-weight-bold money">{{ brl(doc.totalAmount) }}</dd>
                 <dt>Descrição</dt>
                 <dd>{{ doc.description ?? '—' }}</dd>
@@ -291,10 +305,33 @@ async function openFile() {
                   {{ doc.suggestedProjectId ? projects.nameOf(doc.suggestedProjectId) : 'não identificada' }}
                   <div v-if="doc.suggestionReason" class="text-caption muted">{{ doc.suggestionReason }}</div>
                 </dd>
-                <dt v-if="doc.accessKey">Chave</dt>
-                <dd v-if="doc.accessKey" class="text-caption" style="word-break: break-all">{{ doc.accessKey }}</dd>
+                <dt v-if="svc ? svc.nationalKey : doc.accessKey">Chave</dt>
+                <dd v-if="svc ? svc.nationalKey : doc.accessKey" class="text-caption" style="word-break: break-all">{{ svc ? svc.nationalKey : doc.accessKey }}</dd>
+                <dt v-if="svc?.construction?.code || svc?.construction?.address">Obra na nota</dt>
+                <dd v-if="svc?.construction?.code || svc?.construction?.address" class="text-caption">
+                  {{ [svc.construction.code, svc.construction.address, svc.construction.art ? `ART ${svc.construction.art}` : null].filter(Boolean).join(' · ') }}
+                </dd>
               </dl>
               </div>
+              </div>
+            </v-card>
+
+            <!-- NFS-e: custo da obra × o que o prestador recebe -->
+            <v-card v-if="svc" class="pa-4 mb-4">
+              <div class="card-title mb-3">Valores e retenções</div>
+              <div class="ret-row"><span>Valor dos serviços</span><b class="money">{{ brl(svc.servicesCents) }}</b></div>
+              <div v-if="svc.unconditionalDiscountCents" class="ret-row"><span>Desconto incondicional</span><span class="money">− {{ brl(svc.unconditionalDiscountCents) }}</span></div>
+              <div class="ret-row strong"><span>Custo da obra</span><b class="money">{{ brl(doc.totalAmount) }}</b></div>
+              <div v-for="r in retentionRows" :key="r.label" class="ret-row muted"><span>{{ r.label }}</span><span class="money">− {{ brl(r.amount) }}</span></div>
+              <div v-if="svc.conditionalDiscountCents" class="ret-row muted"><span>Desconto condicionado</span><span class="money">− {{ brl(svc.conditionalDiscountCents) }}</span></div>
+              <div class="ret-row strong"><span>Prestador recebe</span><b class="money">{{ brl(svc.netCents) }}</b></div>
+              <div class="text-caption muted mt-2">
+                <template v-if="svc.retainedCents">
+                  As retenções ({{ brl(svc.retainedCents) }}) não são pagas ao prestador: a construtora recolhe em guia
+                  (ISS para a prefeitura; INSS, IR e PIS/COFINS/CSLL para a Receita).
+                </template>
+                <template v-else>Sem retenções: o prestador recebe o valor cheio.</template>
+                <template v-if="!svc.issRetained && svc.issCents"> ISS de {{ brl(svc.issCents) }} fica por conta do prestador.</template>
               </div>
             </v-card>
 
@@ -305,7 +342,7 @@ async function openFile() {
                 <span>{{ i.message }}</span>
               </div>
             </v-card>
-            <v-card v-else-if="doc.type === 'NFE'" class="pa-4 mb-4 d-flex align-center ga-3">
+            <v-card v-else-if="!isManual" class="pa-4 mb-4 d-flex align-center ga-3">
               <v-icon color="success" size="28">mdi-check-circle</v-icon>
               <div class="text-body-2">Dados extraídos e validados sem pendências.</div>
             </v-card>
@@ -375,7 +412,7 @@ async function openFile() {
               </template>
             </v-card>
 
-            <v-card v-if="doc.items.length" class="pa-4">
+            <v-card v-if="doc.items.length && doc.type !== 'NFSE'" class="pa-4">
               <div class="d-flex align-center justify-space-between">
                 <div class="card-title">Itens ({{ doc.items.length }})</div>
                 <v-btn variant="text" size="small" @click="showItems = !showItems">{{ showItems ? 'ocultar' : 'mostrar' }}</v-btn>
@@ -433,8 +470,8 @@ async function openFile() {
                   <v-text-field v-model="r.amount" label="Valor (R$)" class="amount" />
                   <v-btn v-if="instRows.length > 1" icon="mdi-close" variant="text" size="small" @click="instRows.splice(i, 1)" />
                 </div>
-                <div class="text-caption" :class="instSum === total ? 'text-success' : 'text-error'">
-                  Parcelas somam {{ brl(instSum) }} de {{ brl(total) }}
+                <div class="text-caption" :class="instSum === payable ? 'text-success' : 'text-error'">
+                  Parcelas somam {{ brl(instSum) }} de {{ brl(payable) }}<template v-if="payable !== total"> (líquido ao prestador, sem as retenções)</template>
                 </div>
                 <div v-if="doc.installmentsFromXml.length" class="text-caption muted mt-1">Vencimentos lidos das duplicatas do XML.</div>
               </v-card>
@@ -511,6 +548,21 @@ async function openFile() {
 </template>
 
 <style scoped>
+.ret-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.88rem;
+  padding: 3px 0;
+}
+.ret-row.muted {
+  color: var(--oo-muted);
+}
+.ret-row.strong {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin-top: 4px;
+  padding-top: 7px;
+}
 .facts {
   display: grid;
   grid-template-columns: 108px 1fr;

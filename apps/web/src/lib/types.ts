@@ -13,6 +13,28 @@ export interface ProjectLite {
   status: string
 }
 
+export interface NfseInfo {
+  layout: 'NACIONAL' | 'ABRASF' | 'SP'
+  serviceCode: string | null
+  serviceLabel: string | null
+  competence: string | null
+  cityCode: string | null
+  cityName: string | null
+  verificationCode: string | null
+  nationalKey: string | null
+  servicesCents: number
+  unconditionalDiscountCents: number
+  conditionalDiscountCents: number
+  issCents: number
+  issRate: string | null
+  issRetained: boolean
+  retentions: { iss: number; inss: number; ir: number; csll: number; pis: number; cofins: number; outras: number }
+  retainedCents: number
+  netCents: number
+  construction: { code: string | null; art: string | null; address: string | null } | null
+  cancelled: boolean
+}
+
 export interface DocumentDetail {
   id: string
   type: 'NFE' | 'NFSE' | 'RECIBO' | 'OUTRO'
@@ -36,6 +58,9 @@ export interface DocumentDetail {
   approvedAt: string | null
   createdAt: string
   installmentsFromXml: { number: string; dueDate: string; amountCents: number }[]
+  /** quanto o fornecedor recebe (NFS-e com retenção: líquido; demais: total) */
+  payableAmount: number | null
+  service: NfseInfo | null
   issuer: { cnpj: string | null; name: string | null } | null
   supplier: { id: string; name: string; cnpj: string; status: string } | null
   items: { id: string; description: string; ncm: string | null; unit: string | null; quantity: string; unitPrice: string; total: number }[]
