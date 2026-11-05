@@ -3,6 +3,7 @@ import { db } from '../db/client.js'
 import { alerts, allocations, documents, payables, projects, suppliers } from '../db/schema.js'
 import { evaluateDueAlerts } from './alerts.js'
 import { computeProjectFinancials } from './financials.js'
+import { alertInScope, allocInScope, docInScope, type Scope } from './scope.js'
 
 /** Período no fuso de São Paulo: from/to como AAAA-MM-DD (inclusive). */
 export function periodBounds(from?: string, to?: string) {
@@ -17,28 +18,28 @@ export function periodBounds(from?: string, to?: string) {
   return { from: f, to: t, start, end, prevStart: new Date(start.getTime() - span - 1), prevEnd: new Date(start.getTime() - 1) }
 }
 
-async function appropriatedBetween(companyId: string, start: Date, end: Date) {
+async function appropriatedBetween(companyId: string, start: Date, end: Date, scope: Scope) {
   const rows = await db
     .select({ category: allocations.category, total: sql<string>`sum(${allocations.amount})` })
     .from(allocations)
     .innerJoin(documents, eq(documents.id, allocations.documentId))
-    .where(and(eq(documents.companyId, companyId), eq(documents.status, 'APROVADO'), gte(documents.issueDate, start), lte(documents.issueDate, end)))
+    .where(and(eq(documents.companyId, companyId), eq(documents.status, 'APROVADO'), gte(documents.issueDate, start), lte(documents.issueDate, end), allocInScope(scope)))
     .groupBy(allocations.category)
   return rows.map((r) => ({ category: r.category, total: Number(r.total) }))
 }
 
-export async function getDashboard(companyId: string, from?: string, to?: string) {
+export async function getDashboard(companyId: string, from?: string, to?: string, scope?: Scope) {
   const period = periodBounds(from, to)
   await db.transaction((tx) => evaluateDueAlerts(tx, companyId))
 
   const [byCategory, prevByCategory, projectRows, openPayables, upcoming, openAlerts, pendingDocs] = await Promise.all([
-    appropriatedBetween(companyId, period.start, period.end),
-    appropriatedBetween(companyId, period.prevStart, period.prevEnd),
-    db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(projects.code),
+    appropriatedBetween(companyId, period.start, period.end, scope),
+    appropriatedBetween(companyId, period.prevStart, period.prevEnd, scope),
+    db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(projects.code).then((rows) => (scope ? rows.filter((p) => scope.includes(p.id)) : rows)),
     db
       .select({ total: sql<string>`coalesce(sum(${payables.amount} - ${payables.paidAmount}), 0)` })
       .from(payables)
-      .where(and(eq(payables.companyId, companyId), inArray(payables.status, ['ABERTO', 'PARCIAL']))),
+      .where(and(eq(payables.companyId, companyId), inArray(payables.status, ['ABERTO', 'PARCIAL']), docInScope(payables.documentId, scope))),
     db
       .select({
         id: payables.id,
@@ -60,6 +61,7 @@ export async function getDashboard(companyId: string, from?: string, to?: string
           eq(payables.companyId, companyId),
           inArray(payables.status, ['ABERTO', 'PARCIAL']),
           lt(payables.dueDate, new Date(Date.now() + 30 * 86400000)),
+          docInScope(payables.documentId, scope),
         ),
       )
       .orderBy(payables.dueDate)
@@ -67,15 +69,15 @@ export async function getDashboard(companyId: string, from?: string, to?: string
     db
       .select()
       .from(alerts)
-      .where(and(eq(alerts.companyId, companyId), eq(alerts.status, 'ABERTO')))
+      .where(and(eq(alerts.companyId, companyId), eq(alerts.status, 'ABERTO'), alertInScope(alerts.projectId, alerts.documentId, scope)))
       .orderBy(sql`case ${alerts.severity} when 'CRITICO' then 0 when 'ATENCAO' then 1 when 'OPORTUNIDADE' then 2 else 3 end`, desc(alerts.createdAt)),
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(documents)
-      .where(and(eq(documents.companyId, companyId), inArray(documents.status, ['RECEBIDO', 'EM_REVISAO']))),
+      .where(and(eq(documents.companyId, companyId), inArray(documents.status, ['RECEBIDO', 'EM_REVISAO']), docInScope(documents.id, scope))),
   ])
 
-  const fin = await computeProjectFinancials(db, companyId)
+  const fin = await computeProjectFinancials(db, companyId, scope ?? undefined)
   const active = projectRows.filter((p) => p.status === 'ATIVA')
   const cost = byCategory.reduce((a, b) => a + b.total, 0)
   const prevCost = prevByCategory.reduce((a, b) => a + b.total, 0)

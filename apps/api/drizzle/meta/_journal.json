@@ -57,6 +57,13 @@
       "when": 1793804489002,
       "tag": "0007_liberacoes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793882953316,
+      "tag": "0008_estorno_pagamento",
+      "breakpoints": true
     }
   ]
 }

@@ -78,6 +78,26 @@ async function downloadCsv() {
   }
 }
 const printReport = () => window.print()
+
+// pacote do contador: XML + PDF + índice das notas aprovadas no mês
+const zipping = ref('')
+const zipMonths = computed(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const ym = ymd(d).slice(0, 7)
+    return { ym, label: `${['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][d.getMonth()]} de ${d.getFullYear()}`, from: ymd(d), to: ymd(new Date(d.getFullYear(), d.getMonth() + 1, 0)) }
+  }),
+)
+async function downloadZip(from: string, to: string, key: string) {
+  zipping.value = key
+  try {
+    await api.download(`/api/exports/notas-contador.zip?from=${from}&to=${to}`, `notas-contador-${from.slice(0, 7)}.zip`)
+  } catch (e) {
+    toastError(e)
+  } finally {
+    zipping.value = ''
+  }
+}
 </script>
 
 <template>
@@ -89,6 +109,20 @@ const printReport = () => window.print()
     <div class="d-flex ga-2 align-center flex-wrap no-print">
       <PeriodPicker v-model="period" extended />
       <v-btn variant="outlined" prepend-icon="mdi-microsoft-excel" @click="downloadCsv">Baixar planilha</v-btn>
+      <v-menu location="bottom end">
+        <template #activator="{ props }">
+          <v-btn v-bind="props" variant="outlined" prepend-icon="mdi-folder-zip-outline" append-icon="mdi-chevron-down" :loading="!!zipping">Pacote do contador</v-btn>
+        </template>
+        <v-card width="340" class="py-2">
+          <div class="px-4 pt-2 pb-1 text-body-2 font-weight-bold">Notas aprovadas para a contabilidade</div>
+          <div class="px-4 pb-2 text-caption muted text-wrap">ZIP com os XML das NF-e, os PDFs e fotos, e uma planilha com todas as notas. Pela data de emissão.</div>
+          <v-list density="compact" class="py-0">
+            <v-list-item prepend-icon="mdi-calendar-range" :title="`Período da tela (${periodLabel})`" @click="downloadZip(period.from, period.to, 'tela')" />
+            <v-divider class="my-1" />
+            <v-list-item v-for="m in zipMonths" :key="m.ym" :title="m.label" prepend-icon="mdi-calendar-month-outline" @click="downloadZip(m.from, m.to, m.ym)" />
+          </v-list>
+        </v-card>
+      </v-menu>
       <v-btn color="primary" prepend-icon="mdi-printer-outline" @click="printReport">Imprimir / PDF</v-btn>
     </div>
   </div>

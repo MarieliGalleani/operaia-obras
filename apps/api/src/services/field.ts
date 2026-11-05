@@ -10,6 +10,7 @@
  */
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
+import { projectInScope, type Scope } from './scope.js'
 import {
   deliveryReceipts,
   materialRequests,
@@ -439,13 +440,13 @@ export async function setStages(companyId: string, userId: string, projectId: st
   return fieldProject(companyId, projectId)
 }
 
-export async function listMaterialRequests(companyId: string, status?: string) {
+export async function listMaterialRequests(companyId: string, status?: string, scope?: Scope) {
   const rows = await db
     .select({ r: materialRequests, projectName: projects.name, projectCode: projects.code, orderNumber: purchaseOrders.number, orderStatus: purchaseOrders.status })
     .from(materialRequests)
     .innerJoin(projects, eq(projects.id, materialRequests.projectId))
     .leftJoin(purchaseOrders, eq(purchaseOrders.id, materialRequests.orderId))
-    .where(and(eq(materialRequests.companyId, companyId), status ? inArray(materialRequests.status, status.split(',') as any) : undefined))
+    .where(and(eq(materialRequests.companyId, companyId), status ? inArray(materialRequests.status, status.split(',') as any) : undefined, projectInScope(materialRequests.projectId, scope)))
     .orderBy(desc(materialRequests.urgent), desc(materialRequests.createdAt))
     .limit(200)
   return rows.map(({ r, orderNumber, ...x }) => ({ ...r, ...x, orderCode: orderNumber ? orderCode(orderNumber) : null }))

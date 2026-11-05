@@ -795,3 +795,233 @@ describe('liberações por pessoa e "ver como"', () => {
     expect((await api('POST', `/api/users/${mestreId}/view-as`, undefined, fin)).statusCode).toBe(403)
   })
 })
+
+function postFile(url: string, content: Buffer | string, name: string, auth = token) {
+  const boundary = '----operaia' + rnd()
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+    Buffer.from(content),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ])
+  return app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${auth}`, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body })
+}
+
+describe('importação de obras por planilha', () => {
+  it('modelo .xlsx vem com as obras atuais e volta igual na prévia', async () => {
+    const r = await api('GET', '/api/projects/import/template.xlsx')
+    expect(r.statusCode).toBe(200)
+    expect(r.headers['content-type']).toContain('spreadsheetml')
+    const p = await postFile('/api/projects/import/preview', r.rawPayload, 'obras.xlsx')
+    expect(p.statusCode).toBe(200)
+    const prev = p.json()
+    const t01 = prev.rows.find((x: any) => x.code === 'T-01')
+    expect(t01.action).toBe('ATUALIZA')
+    expect(t01.budgetTotal).toBe(10_000_00)
+    expect(t01.budgets).toEqual([{ category: 'MATERIAIS', amount: 8_000_00 }])
+  })
+
+  it('CSV do Excel: prévia aponta erros por linha e não grava nada', async () => {
+    const csv = [
+      'Código;Nome da obra;Endereço;Situação;Início;Término;Materiais;Mão de obra;Orçamento total',
+      'IMP-01;Casa Importada;Rua A, 10;Ativa;15/01/2026;30/06/2027;R$ 120.000,00;80.000,00;',
+      'IMP-02;Loja Importada;;Pausada;;;;;R$ 45.000,00',
+      'IMP-03;Sem orçamento;;Ativa;;;;;',
+      'IMP-01;Repetida;;Ativa;;;;;1000',
+      'IMP-04;Data ruim;;Talvez;32/13/2026;;;;5000',
+      'IMP-05;Total menor;;Ativa;;;10.000,00;;5.000,00',
+      'T-02;Galpão Beta Atualizado;Av. Nova, 1;Concluída;;;;;150000',
+      ';;;;;;;;',
+    ].join('\r\n')
+    const r = await postFile('/api/projects/import/preview', csv, 'obras.csv')
+    expect(r.statusCode).toBe(200)
+    const { rows, summary } = r.json()
+    expect(summary).toMatchObject({ total: 7, create: 2, update: 1, errors: 4 })
+    const by = (c: string, n = 0) => rows.filter((x: any) => x.code === c)[n]
+    expect(by('IMP-01')).toMatchObject({ action: 'NOVA', startDate: '2026-01-15', endDate: '2027-06-30', budgetTotal: 200_000_00 })
+    expect(by('IMP-02')).toMatchObject({ status: 'PAUSADA', budgetTotal: 45_000_00, budgets: [] })
+    expect(by('IMP-03').errors[0]).toMatch(/Sem orçamento/)
+    expect(by('IMP-01', 1).errors[0]).toMatch(/repetido.*linha 2/)
+    expect(by('IMP-04').errors.join(' ')).toMatch(/Situação.*Início/)
+    expect(by('IMP-05').errors[0]).toMatch(/menor que a soma/)
+    expect(by('T-02')).toMatchObject({ action: 'ATUALIZA', status: 'CONCLUIDA' })
+    const list = (await api('GET', '/api/projects')).json()
+    expect(list.some((p: any) => p.code === 'IMP-01')).toBe(false)
+  })
+
+  it('confirmação grava só as linhas sem erro, com auditoria', async () => {
+    const csv = [
+      'codigo,nome,situacao,materiais,servicos,total',
+      'IMP-10,Obra Nova Dez,ativa,"1,500.00",500,',
+      'T-02,Galpão Beta,em andamento,,,"120,000.00"',
+      'IMP-11,,ativa,,,100',
+    ].join('\n')
+    const r = await postFile('/api/projects/import', csv, 'obras.csv')
+    expect(r.statusCode).toBe(200)
+    expect(r.json()).toEqual({ created: 1, updated: 1, skipped: 1 })
+    const list = (await api('GET', '/api/projects')).json()
+    const nova = list.find((p: any) => p.code === 'IMP-10')
+    expect(nova.budgetTotal).toBe(2_000_00)
+    expect(list.find((p: any) => p.code === 'T-02').budgetTotal).toBe(120_000_00)
+    const budgets = await db.select().from(projectBudgets).where(eq(projectBudgets.projectId, nova.id))
+    expect(budgets.map((b) => [b.category, b.amount]).sort()).toEqual([
+      ['MATERIAIS', 1_500_00],
+      ['SERVICOS', 500_00],
+    ])
+  })
+
+  it('exige a liberação de editar obras e respeita as obras liberadas', async () => {
+    const [g] = await db
+      .insert(users)
+      .values({ companyId: createdCompanies[0], name: 'Gestor Imp', email: `g${rnd()}@teste.com`, passwordHash: 'x', role: 'GESTOR_OBRA', permissions: { projectIds: [projectA] } })
+      .returning()
+    const gt = app.jwt.sign({ sub: g.id, companyId: g.companyId, role: 'GESTOR_OBRA', name: g.name })
+    const r = await postFile('/api/projects/import/preview', 'Código;Nome;Total\nT-02;Galpão;1000\nT-01;Residencial;1000', 'x.csv', gt)
+    expect(r.statusCode).toBe(200)
+    expect(r.json().rows[0].errors[0]).toMatch(/não está liberada/)
+    expect(r.json().rows[1].action).toBe('ATUALIZA')
+    const [f] = await db.insert(users).values({ companyId: createdCompanies[0], name: 'Fin Imp', email: `fi${rnd()}@teste.com`, passwordHash: 'x', role: 'FINANCEIRO' }).returning()
+    const ft = app.jwt.sign({ sub: f.id, companyId: f.companyId, role: 'FINANCEIRO', name: f.name })
+    expect((await postFile('/api/projects/import/preview', 'Código;Nome;Total\nX;Y;1', 'x.csv', ft)).statusCode).toBe(403)
+    expect((await postFile('/api/projects/import/preview', 'a;b\n1;2', 'x.csv')).statusCode).toBe(400)
+  })
+})
+
+describe('obras liberadas valem para o sistema todo', () => {
+  let restrito = ''
+  let docB = ''
+  let docNovo = ''
+  let payB = ''
+  beforeAll(async () => {
+    const [f] = await db
+      .insert(users)
+      .values({ companyId: createdCompanies[0], name: 'Fin Só A', email: `sa${rnd()}@teste.com`, passwordHash: 'x', role: 'FINANCEIRO', permissions: { projectIds: [projectA] } })
+      .returning()
+    restrito = app.jwt.sign({ sub: f.id, companyId: f.companyId, role: 'FINANCEIRO', name: f.name })
+    // nota só da obra B, aprovada
+    const up = (await upload(nfe(7001, { extraInfo: 'Obra: Galpão Beta', items: [{ description: 'TELHA METALICA', unit: 'UN', quantity: 10, unitPrice: 100 }], installments: [{ dueDate: '2030-03-10', amount: 1000 }] }))).json().results[0]
+    docB = up.documentId
+    const ap = await api('POST', `/api/documents/${docB}/approve`, { allocations: [{ projectId: projectB, category: 'MATERIAIS', amount: 1_000_00 }] })
+    expect(ap.statusCode).toBe(200)
+    payB = ap.json().payables[0].id
+    // nota sem obra nenhuma (ainda não triada)
+    docNovo = (await upload(nfe(7002, { extraInfo: '', items: [{ description: 'PREGO 18X27', unit: 'KG', quantity: 5, unitPrice: 20 }], installments: [] }))).json().results[0].documentId
+  })
+
+  it('lista de notas e contas a pagar escondem a obra não liberada', async () => {
+    const docs = (await api('GET', '/api/documents', undefined, restrito)).json()
+    const ids = docs.map((d: any) => d.id)
+    expect(ids).not.toContain(docB)
+    expect(ids).toContain(docNovo)
+    expect((await api('GET', '/api/documents', undefined, token)).json().map((d: any) => d.id)).toContain(docB)
+    const pays = (await api('GET', '/api/payables?status=ABERTO,PARCIAL,PAGO', undefined, restrito)).json()
+    expect(pays.map((p: any) => p.id)).not.toContain(payB)
+    expect(pays.length).toBeGreaterThan(0)
+  })
+
+  it('abrir, pagar ou apropriar fora das obras liberadas dá 404', async () => {
+    expect((await api('GET', `/api/documents/${docB}`, undefined, restrito)).statusCode).toBe(404)
+    expect((await api('GET', `/api/documents/${docB}/file`, undefined, restrito)).statusCode).toBe(404)
+    expect((await api('POST', `/api/payables/${payB}/payments`, { amount: 100, paidAt: '2030-03-10' }, restrito)).statusCode).toBe(404)
+    expect((await api('GET', `/api/documents?projectId=${projectB}`, undefined, restrito)).statusCode).toBe(404)
+    const ap = await api('POST', `/api/documents/${docNovo}/approve`, { allocations: [{ projectId: projectB, category: 'MATERIAIS', amount: 100_00 }] }, restrito)
+    expect(ap.statusCode).toBe(404)
+    expect((await api('GET', `/api/documents/${docNovo}`, undefined, restrito)).statusCode).toBe(200)
+  })
+
+  it('visão geral, relatórios e lançamentos só somam as obras liberadas', async () => {
+    const dash = (await api('GET', '/api/dashboard?from=2020-01-01&to=2035-12-31', undefined, restrito)).json()
+    expect(dash.projects.map((p: any) => p.id)).toEqual([projectA])
+    const all = (await api('GET', '/api/reports', undefined, token)).json()
+    const mine = (await api('GET', '/api/reports', undefined, restrito)).json()
+    expect(all.byProject.map((p: any) => p.projectId)).toContain(projectB)
+    expect(mine.byProject.map((p: any) => p.projectId)).toEqual([projectA])
+    expect(mine.total).toBe(all.byProject.find((p: any) => p.projectId === projectA).total)
+    const csv = (await api('GET', '/api/exports/lancamentos.csv', undefined, restrito)).body
+    expect(csv).toContain('T-01')
+    expect(csv).not.toContain('T-02')
+    const alerts = (await api('GET', '/api/alerts?status=ABERTO,RESOLVIDO,IGNORADO', undefined, restrito)).json()
+    expect(alerts.every((a: any) => !a.projectId || a.projectId === projectA)).toBe(true)
+  })
+})
+
+describe('estorno de pagamento', () => {
+  let payableId = ''
+  let amount = 0
+  beforeAll(async () => {
+    const up = (await upload(nfe(8001, { items: [{ description: 'CAL HIDRATADA', unit: 'SC', quantity: 10, unitPrice: 30 }], installments: [{ dueDate: '2030-04-10', amount: 300 }] }))).json().results[0]
+    const ap = await api('POST', `/api/documents/${up.documentId}/approve`, { allocations: [{ projectId: projectA, category: 'MATERIAIS', amount: 300_00 }] })
+    payableId = ap.json().payables[0].id
+    amount = ap.json().payables[0].amount
+  })
+
+  it('estorna o pagamento, o título volta a ter o valor em aberto e o histórico guarda tudo', async () => {
+    expect((await api('POST', `/api/payables/${payableId}/payments`, { amount: 100_00, paidAt: '2030-04-01', method: 'PIX' })).json().status).toBe('PARCIAL')
+    expect((await api('POST', `/api/payables/${payableId}/payments`, { amount: 200_00, paidAt: '2030-04-02', method: 'Boleto' })).json().status).toBe('PAGO')
+    const hist = (await api('GET', `/api/payables/${payableId}/payments`)).json()
+    expect(hist).toHaveLength(2)
+    const second = hist.find((p: any) => p.amount === 200_00)
+
+    expect((await api('POST', `/api/payables/${payableId}/payments/${second.id}/reverse`, { reason: 'x' })).statusCode).toBe(400)
+    const r = await api('POST', `/api/payables/${payableId}/payments/${second.id}/reverse`, { reason: 'Valor digitado errado' })
+    expect(r.statusCode).toBe(200)
+    expect(r.json()).toMatchObject({ status: 'PARCIAL', paidAmount: 100_00, amount })
+    // não estorna duas vezes
+    expect((await api('POST', `/api/payables/${payableId}/payments/${second.id}/reverse`, { reason: 'De novo' })).json().code).toBe('JA_ESTORNADO')
+
+    const hist2 = (await api('GET', `/api/payables/${payableId}/payments`)).json()
+    const rev = hist2.find((p: any) => p.id === second.id)
+    expect(rev.reversedAt).toBeTruthy()
+    expect(rev.reverseReason).toBe('Valor digitado errado')
+    expect(rev.reversedByName).toBe('Teste')
+
+    // registra o valor certo depois do estorno
+    expect((await api('POST', `/api/payables/${payableId}/payments`, { amount: 200_00, paidAt: '2030-04-03' })).json().status).toBe('PAGO')
+    const first = hist2.find((p: any) => p.amount === 100_00)
+    expect((await api('POST', `/api/payables/${payableId}/payments/${first.id}/reverse`, { reason: 'Pago no título errado' })).json().status).toBe('PARCIAL')
+
+    const audit = (await api('GET', `/api/audit?entity=payable&entityId=${payableId}`)).json()
+    expect(audit.filter((a: any) => a.action === 'payment_reversed')).toHaveLength(2)
+  })
+
+  it('exige a liberação de pagamentos', async () => {
+    const [g] = await db.insert(users).values({ companyId: createdCompanies[0], name: 'Gestor Est', email: `ge${rnd()}@teste.com`, passwordHash: 'x', role: 'GESTOR_OBRA' }).returning()
+    const gt = app.jwt.sign({ sub: g.id, companyId: g.companyId, role: 'GESTOR_OBRA', name: g.name })
+    const hist = (await api('GET', `/api/payables/${payableId}/payments`)).json()
+    const live = hist.find((p: any) => !p.reversedAt)
+    expect((await api('POST', `/api/payables/${payableId}/payments/${live.id}/reverse`, { reason: 'Sem liberação' }, gt)).statusCode).toBe(403)
+  })
+})
+
+describe('pacote do contador (ZIP do mês)', () => {
+  it('traz os XML originais, o índice e respeita o período e as obras liberadas', async () => {
+    const { unzipSync, strFromU8 } = await import('fflate')
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+    const r = await api('GET', `/api/exports/notas-contador.zip?from=${today.slice(0, 8)}01&to=${today}`)
+    expect(r.statusCode).toBe(200)
+    expect(r.headers['content-type']).toBe('application/zip')
+    const files = unzipSync(new Uint8Array(r.rawPayload))
+    const names = Object.keys(files)
+    expect(names).toEqual(expect.arrayContaining(['notas.csv', 'lancamentos-por-obra.csv', 'LEIA-ME.txt']))
+    const xmls = names.filter((n) => n.startsWith('XML/'))
+    const count = Number(r.headers['x-notas'])
+    expect(xmls.length).toBeGreaterThan(0)
+    expect(xmls.length).toBeLessThanOrEqual(count)
+    expect(strFromU8(files[xmls[0]])).toContain('<nfeProc')
+    const csv = strFromU8(files['notas.csv'])
+    expect(csv).toContain('Galpão Beta')
+    expect(csv.trim().split('\r\n').length - 1).toBe(count)
+
+    // período sem notas: pacote vazio, mas válido
+    const empty = await api('GET', '/api/exports/notas-contador.zip?from=2001-01-01&to=2001-01-31')
+    expect(empty.headers['x-notas']).toBe('0')
+    expect(Object.keys(unzipSync(new Uint8Array(empty.rawPayload)))).toContain('LEIA-ME.txt')
+
+    // pessoa só com a obra A não recebe a nota que é só da obra B
+    const [f] = await db.insert(users).values({ companyId: createdCompanies[0], name: 'Fin Zip', email: `fz${rnd()}@teste.com`, passwordHash: 'x', role: 'FINANCEIRO', permissions: { projectIds: [projectA] } }).returning()
+    const ft = app.jwt.sign({ sub: f.id, companyId: f.companyId, role: 'FINANCEIRO', name: f.name })
+    const mine = await api('GET', `/api/exports/notas-contador.zip?from=${today.slice(0, 8)}01&to=${today}`, undefined, ft)
+    expect(Number(mine.headers['x-notas'])).toBeLessThan(Number(r.headers['x-notas']))
+    expect(strFromU8(unzipSync(new Uint8Array(mine.rawPayload))['notas.csv'])).not.toContain('NF-7001')
+    expect((await api('GET', '/api/exports/notas-contador.zip?from=2026-02-01&to=2026-01-01')).statusCode).toBe(400)
+  })
+})

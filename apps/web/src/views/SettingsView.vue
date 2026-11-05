@@ -278,7 +278,7 @@ async function copy(text: string) {
           chips
           closable-chips
         />
-        <div class="text-caption muted">Vale para o App de obra e para a tela Obras.</div>
+        <div class="text-caption muted">Vale para o sistema todo: obras, notas, compras, contas a pagar, relatórios, alertas e App de obra. Nota ainda sem obra aparece para todos, para ser triada.</div>
       </v-card-text>
       <v-divider />
       <div class="pa-4 d-flex align-center ga-2 flex-wrap">

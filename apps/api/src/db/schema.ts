@@ -276,6 +276,10 @@ export const payments = pgTable('payments', {
   method: text('method'),
   createdById: uuid('created_by_id'),
   createdAt: createdAt(),
+  /** estorno: o pagamento continua no histórico, mas deixa de contar no título */
+  reversedAt: timestamp('reversed_at', { withTimezone: true }),
+  reversedById: uuid('reversed_by_id'),
+  reverseReason: text('reverse_reason'),
 })
 
 export const alerts = pgTable(

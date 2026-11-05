@@ -24,11 +24,12 @@ import { isValidCnpj, onlyDigits } from './domain/cnpj.js'
 import { changePassword, createUser } from './services/accounts.js'
 import { registerPlatformRoutes } from './platform.js'
 import { audit } from './services/audit.js'
-import { exportAllocations, exportPayables } from './services/exports.js'
+import { exportAccountantZip, exportAllocations, exportPayables } from './services/exports.js'
 import { exportReport, getReports } from './services/reports.js'
 import { getSupplierPriceSummaries, getSupplierPrices } from './services/prices.js'
 import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { getDashboard } from './services/dashboard.js'
+import { confirmImport, importTemplate, previewImport } from './services/imports.js'
 import {
   DEFAULT_STAGES,
   addSitePhoto,
@@ -52,13 +53,16 @@ import {
   ingestNfeXml,
   listDocuments,
   listPayables,
+  listPayments,
   registerPayment,
+  reversePayment,
   rejectDocument,
   updateDocumentDraft,
 } from './services/documents.js'
 import { AppError, badRequest, notFound } from './services/errors.js'
 import { ACTIONS, ROLE_DEFAULTS, SCREENS, apiAllowed, canProject, effectivePerms, type Action } from './services/permissions.js'
 import { computeProjectFinancials } from './services/financials.js'
+import { alertInScope, assertDocument, assertPayable, assertProjectRow } from './services/scope.js'
 
 const category = z.enum(COST_CATEGORIES as unknown as [string, ...string[]]) as z.ZodType<(typeof COST_CATEGORIES)[number]>
 const cents = z.number().int()
@@ -217,6 +221,18 @@ export async function registerRoutes(app: FastifyInstance) {
       await db.insert(idempotencyKeys).values({ companyId: me(req).companyId, key, statusCode: reply.statusCode, response }).onConflictDoNothing()
       return payload
     })
+    // obras liberadas: nota, título, pedido, solicitação e alerta abertos pelo id
+    r.addHook('preHandler', async (req) => {
+      const scope = req.perms?.projectIds
+      const id = (req.params as { id?: string })?.id
+      if (!scope || !id || !/^[0-9a-f-]{36}$/.test(id)) return
+      const path = req.url.split('?')[0]
+      if (path.startsWith('/api/documents/')) await assertDocument(id, scope)
+      else if (path.startsWith('/api/payables/')) await assertPayable(id, scope)
+      else if (path.startsWith('/api/purchase-orders/')) await assertProjectRow('purchase_orders', id, scope, 'Pedido')
+      else if (path.startsWith('/api/material-requests/')) await assertProjectRow('material_requests', id, scope, 'Solicitação')
+      else if (path.startsWith('/api/alerts/')) await assertProjectRow('alerts', id, scope, 'Alerta')
+    })
     await r.register(async (p) => registerPlatformRoutes(p))
 
     r.get('/api/auth/me', async (req) => {
@@ -236,7 +252,7 @@ export async function registerRoutes(app: FastifyInstance) {
     // ---------------------------------------------------------- dashboard
     r.get('/api/dashboard', async (req) => {
       const q = z.object({ from: ymd.optional(), to: ymd.optional() }).parse(req.query)
-      return getDashboard(me(req).companyId, q.from, q.to)
+      return getDashboard(me(req).companyId, q.from, q.to, req.perms.projectIds)
     })
 
     // -------------------------------------------------------------- obras
@@ -302,6 +318,28 @@ export async function registerRoutes(app: FastifyInstance) {
         return p
       })
       return reply.code(201).send(project)
+    })
+
+    // ----------------------------------------------- importação por planilha
+    r.get('/api/projects/import/template.xlsx', async (req, reply) => {
+      requireAction(req, 'editar_obras')
+      const buf = await importTemplate(me(req).companyId)
+      return reply
+        .header('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('content-disposition', 'attachment; filename="obras-operaia.xlsx"')
+        .send(buf)
+    })
+    const importFile = async (req: FastifyRequest) => {
+      requireAction(req, 'editar_obras')
+      const [file] = await readUpload(req)
+      if (!file) throw badRequest('SEM_ARQUIVO', 'Envie a planilha (.xlsx ou .csv).')
+      if (file.content.length > 5 * 1024 * 1024) throw badRequest('ARQUIVO_GRANDE', 'Planilha maior que 5 MB.')
+      return file
+    }
+    r.post('/api/projects/import/preview', async (req) => previewImport(me(req).companyId, await importFile(req), req.perms.projectIds))
+    r.post('/api/projects/import', async (req) => {
+      const u = me(req)
+      return confirmImport(u.companyId, u.sub, await importFile(req), req.perms.projectIds)
     })
 
     r.patch('/api/projects/:id', async (req) => {
@@ -473,7 +511,8 @@ export async function registerRoutes(app: FastifyInstance) {
     })
     r.get('/api/purchase-orders', async (req) => {
       const q = z.object({ status: z.string().optional(), projectId: z.string().uuid().optional(), supplierId: z.string().uuid().optional() }).parse(req.query)
-      return listOrders(me(req).companyId, q)
+      if (q.projectId) requireProject(req, q.projectId)
+      return listOrders(me(req).companyId, { ...q, scope: req.perms.projectIds })
     })
     r.get('/api/purchase-orders/:id', async (req) => {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
@@ -482,12 +521,15 @@ export async function registerRoutes(app: FastifyInstance) {
     r.post('/api/purchase-orders', async (req, reply) => {
       const u = me(req)
       const body = orderBody.parse(req.body)
+      requireProject(req, body.projectId)
       return reply.code(201).send(await createOrder(u.companyId, { id: u.sub, name: u.name }, body))
     })
     r.patch('/api/purchase-orders/:id', async (req) => {
       const u = me(req)
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-      return updateOrder(u.companyId, u.sub, id, orderBody.partial().parse(req.body))
+      const body = orderBody.partial().parse(req.body)
+      if (body.projectId) requireProject(req, body.projectId)
+      return updateOrder(u.companyId, u.sub, id, body)
     })
     r.post('/api/purchase-orders/:id/approve', async (req) => {
       const u = me(req)
@@ -506,6 +548,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const u = me(req)
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const { orderId } = z.object({ orderId: z.string().uuid().nullable() }).parse(req.body)
+      if (orderId) await assertProjectRow('purchase_orders', orderId, req.perms.projectIds, 'Pedido')
       await linkDocumentToOrder(u.companyId, u.sub, id, orderId)
       return getDocument(u.companyId, id)
     })
@@ -608,7 +651,7 @@ export async function registerRoutes(app: FastifyInstance) {
     r.get('/api/stage-templates', async () => DEFAULT_STAGES)
     r.get('/api/material-requests', async (req) => {
       const q = z.object({ status: z.string().optional() }).parse(req.query)
-      return listMaterialRequests(me(req).companyId, q.status)
+      return listMaterialRequests(me(req).companyId, q.status, req.perms.projectIds)
     })
     r.post('/api/material-requests/:id/decline', async (req) => {
       requireAction(req, 'aprovar_pedidos')
@@ -619,7 +662,8 @@ export async function registerRoutes(app: FastifyInstance) {
     // --------------------------------------------------------- documentos
     r.get('/api/documents', async (req) => {
       const q = z.object({ status: z.string().optional(), projectId: z.string().uuid().optional(), q: z.string().optional() }).parse(req.query)
-      return listDocuments(me(req).companyId, q)
+      if (q.projectId) requireProject(req, q.projectId)
+      return listDocuments(me(req).companyId, { ...q, scope: req.perms.projectIds })
     })
 
     r.get('/api/documents/:id', async (req) => {
@@ -683,6 +727,7 @@ export async function registerRoutes(app: FastifyInstance) {
           suggestedProjectId: z.string().uuid().nullable().optional(),
         })
         .parse(req.body)
+      if (body.suggestedProjectId) requireProject(req, body.suggestedProjectId)
       return updateDocumentDraft(u.companyId, u.sub, id, body)
     })
 
@@ -698,6 +743,7 @@ export async function registerRoutes(app: FastifyInstance) {
           acknowledgeCritical: z.boolean().optional(),
         })
         .parse(req.body)
+      for (const a of body.allocations) requireProject(req, a.projectId)
       return approveDocument(u.companyId, u.sub, id, body)
     })
 
@@ -720,7 +766,8 @@ export async function registerRoutes(app: FastifyInstance) {
     // ------------------------------------------------------ contas a pagar
     r.get('/api/payables', async (req) => {
       const q = z.object({ status: z.string().optional(), from: ymd.optional(), to: ymd.optional(), projectId: z.string().uuid().optional() }).parse(req.query)
-      return listPayables(me(req).companyId, q)
+      if (q.projectId) requireProject(req, q.projectId)
+      return listPayables(me(req).companyId, { ...q, scope: req.perms.projectIds })
     })
 
     r.post('/api/payables/:id/payments', async (req) => {
@@ -729,6 +776,19 @@ export async function registerRoutes(app: FastifyInstance) {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const body = z.object({ amount: cents.positive(), paidAt: ymd, method: z.string().optional() }).parse(req.body)
       return registerPayment(u.companyId, u.sub, id, body)
+    })
+
+    r.get('/api/payables/:id/payments', async (req) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+      return listPayments(me(req).companyId, id)
+    })
+
+    r.post('/api/payables/:id/payments/:paymentId/reverse', async (req) => {
+      const u = me(req)
+      requireAction(req, 'pagamentos')
+      const { id, paymentId } = z.object({ id: z.string().uuid(), paymentId: z.string().uuid() }).parse(req.params)
+      const { reason } = z.object({ reason: z.string().trim().min(3, 'Diga o motivo do estorno.').max(500) }).parse(req.body)
+      return reversePayment(u.companyId, u.sub, id, paymentId, reason)
     })
 
     // ------------------------------------------------------------- alertas
@@ -753,7 +813,7 @@ export async function registerRoutes(app: FastifyInstance) {
         .from(alerts)
         .leftJoin(projects, eq(projects.id, alerts.projectId))
         .leftJoin(suppliers, eq(suppliers.id, alerts.supplierId))
-        .where(and(eq(alerts.companyId, me(req).companyId), inArray(alerts.status, (q.status ?? 'ABERTO').split(',') as any)))
+        .where(and(eq(alerts.companyId, me(req).companyId), inArray(alerts.status, (q.status ?? 'ABERTO').split(',') as any), alertInScope(alerts.projectId, alerts.documentId, req.perms.projectIds)))
         .orderBy(sql`case ${alerts.severity} when 'CRITICO' then 0 when 'ATENCAO' then 1 when 'OPORTUNIDADE' then 2 else 3 end`, desc(alerts.createdAt))
         .limit(200)
     })
@@ -871,7 +931,8 @@ export async function registerRoutes(app: FastifyInstance) {
     // ---------------------------------------------------------- exportações
     r.get('/api/exports/payables.csv', async (req, reply) => {
       const q = z.object({ status: z.string().optional(), from: ymd.optional(), to: ymd.optional(), projectId: z.string().uuid().optional() }).parse(req.query)
-      const csv = await exportPayables(me(req).companyId, q)
+      if (q.projectId) requireProject(req, q.projectId)
+      const csv = await exportPayables(me(req).companyId, { ...q, scope: req.perms.projectIds })
       return reply
         .header('Content-Type', 'text/csv; charset=utf-8')
         .header('Content-Disposition', `attachment; filename="contas-a-pagar-${new Date().toISOString().slice(0, 10)}.csv"`)
@@ -880,13 +941,13 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.get('/api/reports', async (req) => {
       const q = z.object({ from: ymd.optional(), to: ymd.optional() }).parse(req.query)
-      return getReports(me(req).companyId, q.from, q.to)
+      return getReports(me(req).companyId, q.from, q.to, req.perms.projectIds)
     })
 
     r.get('/api/exports/relatorio-:kind.csv', async (req, reply) => {
       const { kind } = z.object({ kind: z.enum(['obras', 'fornecedores', 'meses']) }).parse(req.params)
       const q = z.object({ from: ymd.optional(), to: ymd.optional() }).parse(req.query)
-      const csv = await exportReport(me(req).companyId, kind, q.from, q.to)
+      const csv = await exportReport(me(req).companyId, kind, q.from, q.to, req.perms.projectIds)
       return reply
         .header('Content-Type', 'text/csv; charset=utf-8')
         .header('Content-Disposition', `attachment; filename="relatorio-${kind}-${q.from ?? 'inicio'}-a-${q.to ?? 'hoje'}.csv"`)
@@ -895,11 +956,26 @@ export async function registerRoutes(app: FastifyInstance) {
 
     r.get('/api/exports/lancamentos.csv', async (req, reply) => {
       const q = z.object({ from: ymd.optional(), to: ymd.optional(), projectId: z.string().uuid().optional() }).parse(req.query)
-      const csv = await exportAllocations(me(req).companyId, q)
+      if (q.projectId) requireProject(req, q.projectId)
+      const csv = await exportAllocations(me(req).companyId, { ...q, scope: req.perms.projectIds })
       return reply
         .header('Content-Type', 'text/csv; charset=utf-8')
         .header('Content-Disposition', `attachment; filename="lancamentos-por-obra-${q.from ?? 'inicio'}-a-${q.to ?? 'hoje'}.csv"`)
         .send(csv)
+    })
+
+    r.get('/api/exports/notas-contador.zip', async (req, reply) => {
+      const q = z.object({ from: ymd, to: ymd }).parse(req.query)
+      if (q.to < q.from) throw badRequest('PERIODO_INVALIDO', 'A data final vem antes da inicial.')
+      const u = me(req)
+      const { zip, count } = await exportAccountantZip(u.companyId, { ...q, scope: req.perms.projectIds })
+      await audit(db, { companyId: u.companyId, userId: u.sub, entity: 'export', entityId: u.companyId, action: 'accountant_zip', data: { ...q, count } })
+      const name = q.from.slice(0, 7) === q.to.slice(0, 7) ? q.from.slice(0, 7) : `${q.from}-a-${q.to}`
+      return reply
+        .header('Content-Type', 'application/zip')
+        .header('Content-Disposition', `attachment; filename="notas-contador-${name}.zip"`)
+        .header('X-Notas', String(count))
+        .send(zip)
     })
 
     // ------------------------------------------------------ e-mail de notas

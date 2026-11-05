@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ImportProjectsDialog from '@/components/ImportProjectsDialog.vue'
 import ProjectThumb from '@/components/ProjectThumb.vue'
 import StackBar from '@/components/StackBar.vue'
 import { api } from '@/lib/api'
@@ -27,6 +28,10 @@ const rows = ref<ProjectRow[]>([])
 const loading = ref(true)
 const filter = ref('ATIVA')
 const dialog = ref(false)
+const importing = ref(false)
+async function afterImport() {
+  await Promise.all([load(), store.ensure(true)])
+}
 const saving = ref(false)
 const form = ref({ code: '', name: '', address: '', budget: '', startDate: '', budgets: {} as Record<CostCategory, string> })
 
@@ -88,6 +93,7 @@ async function save() {
         <v-btn value="CONCLUIDA">Concluídas</v-btn>
         <v-btn value="">Todas</v-btn>
       </v-btn-toggle>
+      <v-btn v-if="auth.canDo('editar_obras')" variant="outlined" color="primary" prepend-icon="mdi-microsoft-excel" @click="importing = true">Importar planilha</v-btn>
       <v-btn v-if="auth.canDo('editar_obras')" color="primary" prepend-icon="mdi-plus" @click="newProject">Nova obra</v-btn>
     </div>
   </div>
@@ -118,6 +124,8 @@ async function save() {
     </v-col>
     <v-col v-if="!visible.length" cols="12"><v-card class="pa-8 text-center muted">Nenhuma obra neste filtro.</v-card></v-col>
   </v-row>
+
+  <ImportProjectsDialog v-model="importing" @imported="afterImport" />
 
   <v-dialog v-model="dialog" max-width="640" scrollable>
     <v-card>

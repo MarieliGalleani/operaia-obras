@@ -7,6 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { and, desc, eq, gte, inArray, lte, notInArray, sql } from 'drizzle-orm'
 import { db, type Tx } from '../db/client.js'
+import { docInScope, type Scope } from './scope.js'
 import {
   alerts,
   allocations,
@@ -24,7 +25,7 @@ import { findProjectInText, suggestCategory } from '../domain/classifier.js'
 import { formatCnpj, isValidAccessKey, isValidCnpj, onlyDigits } from '../domain/cnpj.js'
 import { formatBRL } from '../domain/money.js'
 import { NfeParseError, parseNfeXml, type ParsedNfe } from '../domain/nfe-parser.js'
-import { evaluateBudgetAlerts, evaluatePriceAlerts, raiseAlert, resolveAlerts } from './alerts.js'
+import { evaluateBudgetAlerts, evaluateDueAlerts, evaluatePriceAlerts, raiseAlert, resolveAlerts } from './alerts.js'
 import { audit } from './audit.js'
 import { badRequest, conflict, notFound } from './errors.js'
 import { autoLinkDocument, documentOrderInfo, refreshOrderStatus } from './purchases.js'
@@ -369,8 +370,10 @@ export async function getDocument(companyId: string, id: string) {
   }
 }
 
-export async function listDocuments(companyId: string, filters: { status?: string; projectId?: string; q?: string }) {
+export async function listDocuments(companyId: string, filters: { status?: string; projectId?: string; q?: string; scope?: Scope }) {
   const where = [eq(documents.companyId, companyId)]
+  const inScope = docInScope(documents.id, filters.scope)
+  if (inScope) where.push(inScope)
   if (filters.status) where.push(inArray(documents.status, filters.status.split(',') as any))
   if (filters.projectId) {
     where.push(sql`(${documents.suggestedProjectId} = ${filters.projectId} OR EXISTS (SELECT 1 FROM allocations a WHERE a.document_id = ${documents.id} AND a.project_id = ${filters.projectId}))`)
@@ -586,8 +589,10 @@ export async function cancelDocument(companyId: string, userId: string, id: stri
 // Contas a pagar
 // ---------------------------------------------------------------------------
 
-export async function listPayables(companyId: string, filters: { status?: string; from?: string; to?: string; projectId?: string }) {
+export async function listPayables(companyId: string, filters: { status?: string; from?: string; to?: string; projectId?: string; scope?: Scope }) {
   const where = [eq(payables.companyId, companyId)]
+  const inScope = docInScope(payables.documentId, filters.scope)
+  if (inScope) where.push(inScope)
   where.push(inArray(payables.status, (filters.status ?? 'ABERTO,PARCIAL').split(',') as any))
   if (filters.from) where.push(gte(payables.dueDate, new Date(`${filters.from}T00:00:00-03:00`)))
   if (filters.to) where.push(lte(payables.dueDate, new Date(`${filters.to}T23:59:59-03:00`)))
@@ -632,6 +637,66 @@ export async function registerPayment(companyId: string, userId: string, payable
     return [...new Set(allocs.map((a) => a.projectId))]
   })
   await db.transaction((tx) => evaluateBudgetAlerts(tx, companyId, projectIds))
+  const [updated] = await db.select().from(payables).where(eq(payables.id, payableId))
+  return updated
+}
+
+/** Pagamentos de um título, incluindo os estornados (histórico). */
+export async function listPayments(companyId: string, payableId: string) {
+  const [p] = await db.select({ id: payables.id }).from(payables).where(and(eq(payables.companyId, companyId), eq(payables.id, payableId)))
+  if (!p) throw notFound('Título')
+  const rows = await db
+    .select({
+      id: payments.id,
+      amount: payments.amount,
+      paidAt: payments.paidAt,
+      method: payments.method,
+      createdAt: payments.createdAt,
+      createdByName: sql<string | null>`(SELECT u.name FROM users u WHERE u.id = ${payments.createdById})`,
+      reversedAt: payments.reversedAt,
+      reverseReason: payments.reverseReason,
+      reversedByName: sql<string | null>`(SELECT u.name FROM users u WHERE u.id = ${payments.reversedById})`,
+    })
+    .from(payments)
+    .where(eq(payments.payableId, payableId))
+    .orderBy(payments.paidAt, payments.createdAt)
+  return rows
+}
+
+/**
+ * Estorno: desfaz um pagamento registrado errado (valor, data ou título trocado).
+ * O pagamento fica no histórico marcado como estornado; o título volta a ter o valor em aberto.
+ */
+export async function reversePayment(companyId: string, userId: string, payableId: string, paymentId: string, reason: string) {
+  const projectIds = await db.transaction(async (tx) => {
+    const [p] = await tx.select().from(payables).where(and(eq(payables.companyId, companyId), eq(payables.id, payableId))).for('update')
+    if (!p) throw notFound('Título')
+    if (p.status === 'CANCELADO') throw conflict('STATUS_INVALIDO', 'Título cancelado: não há o que estornar.')
+    const [pay] = await tx.select().from(payments).where(and(eq(payments.id, paymentId), eq(payments.payableId, payableId))).for('update')
+    if (!pay) throw notFound('Pagamento')
+    if (pay.reversedAt) throw conflict('JA_ESTORNADO', 'Este pagamento já foi estornado.')
+    const paidAmount = p.paidAmount - pay.amount
+    if (paidAmount < 0) throw conflict('VALOR_INVALIDO', 'O valor estornado passa do que foi pago neste título.')
+    await tx.update(payments).set({ reversedAt: new Date(), reversedById: userId, reverseReason: reason }).where(eq(payments.id, paymentId))
+    await tx
+      .update(payables)
+      .set({ paidAmount, status: paidAmount === 0 ? 'ABERTO' : paidAmount === p.amount ? 'PAGO' : 'PARCIAL' })
+      .where(eq(payables.id, payableId))
+    await audit(tx, {
+      companyId,
+      userId,
+      entity: 'payable',
+      entityId: payableId,
+      action: 'payment_reversed',
+      data: { paymentId, amount: pay.amount, paidAt: pay.paidAt, method: pay.method, reason },
+    })
+    const allocs = await tx.select({ projectId: allocations.projectId }).from(allocations).where(eq(allocations.documentId, p.documentId))
+    return [...new Set(allocs.map((a) => a.projectId))]
+  })
+  await db.transaction(async (tx) => {
+    await evaluateBudgetAlerts(tx, companyId, projectIds)
+    await evaluateDueAlerts(tx, companyId)
+  })
   const [updated] = await db.select().from(payables).where(eq(payables.id, payableId))
   return updated
 }

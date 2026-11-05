@@ -4,7 +4,7 @@
  * Cada perfil tem um padrão (telas + ações). O administrador pode ajustar pessoa a pessoa:
  * - telas: quais menus a pessoa vê (e quais rotas da API ela consegue chamar);
  * - ações: o que ela pode aprovar, pagar ou editar;
- * - obras: todas ou só algumas (vale para o App de obra e a tela Obras).
+ * - obras: todas ou só algumas (vale para o sistema todo; ver services/scope.ts).
  * Administrador sempre tem tudo. Integrações e Configurações (equipe, chave da API, e-mail) são só do administrador.
  * A API confere a cada requisição; o front só esconde o que a API já bloquearia.
  */
@@ -66,6 +66,7 @@ const API_SCREENS: Array<[string, Screen[]]> = [
   ['/api/exports/payables', ['pagar']],
   ['/api/exports/lancamentos', ['relatorios', 'pagar']],
   ['/api/exports/relatorio', ['relatorios']],
+  ['/api/exports/notas-contador', ['relatorios', 'notas']],
   ['/api/reports', ['relatorios']],
   ['/api/alerts', ['inteligencia', 'dashboard', 'obras']],
   ['/api/audit', ['notas', 'obras', 'compras']],

@@ -7,6 +7,7 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { COST_CATEGORIES, allocations, documents, projects, suppliers, type CostCategory } from '../db/schema.js'
 import { categoryLabel } from './alerts.js'
+import { allocInScope, type Scope } from './scope.js'
 
 type ByCat = Partial<Record<CostCategory, number>>
 
@@ -21,8 +22,10 @@ export interface ReportData {
   byMonth: { month: string; total: number; documents: number; byCategory: ByCat }[]
 }
 
-export async function getReports(companyId: string, from?: string, to?: string): Promise<ReportData> {
+export async function getReports(companyId: string, from?: string, to?: string, scope?: Scope): Promise<ReportData> {
   const where = [eq(documents.companyId, companyId), eq(documents.status, 'APROVADO')]
+  const inScope = allocInScope(scope)
+  if (inScope) where.push(inScope)
   if (from) where.push(gte(documents.issueDate, new Date(`${from}T00:00:00-03:00`)))
   if (to) where.push(lte(documents.issueDate, new Date(`${to}T23:59:59-03:00`)))
 
@@ -106,8 +109,8 @@ export const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]}
 
 export type ReportKind = 'obras' | 'fornecedores' | 'meses'
 
-export async function exportReport(companyId: string, kind: ReportKind, from?: string, to?: string) {
-  const r = await getReports(companyId, from, to)
+export async function exportReport(companyId: string, kind: ReportKind, from?: string, to?: string, scope?: Scope) {
+  const r = await getReports(companyId, from, to, scope)
   const cats = COST_CATEGORIES.filter((c) => r.byCategory[c])
   if (kind === 'obras') {
     return toCsv(

@@ -12,6 +12,7 @@
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db, type Tx } from '../db/client.js'
+import { projectInScope, type Scope } from './scope.js'
 import {
   alerts,
   documentItems,
@@ -246,8 +247,10 @@ export async function getDeliveryStats(companyId: string) {
   return out
 }
 
-export async function listOrders(companyId: string, filters: { status?: string; projectId?: string; supplierId?: string } = {}) {
+export async function listOrders(companyId: string, filters: { status?: string; projectId?: string; supplierId?: string; scope?: Scope } = {}) {
   const where = [eq(purchaseOrders.companyId, companyId)]
+  const inScope = projectInScope(purchaseOrders.projectId, filters.scope)
+  if (inScope) where.push(inScope)
   if (filters.status) where.push(inArray(purchaseOrders.status, filters.status.split(',') as any))
   if (filters.projectId) where.push(eq(purchaseOrders.projectId, filters.projectId))
   if (filters.supplierId) where.push(eq(purchaseOrders.supplierId, filters.supplierId))

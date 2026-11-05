@@ -33,16 +33,18 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 
 ## Já feito
 - [x] Liberações por pessoa (telas, ações e obras) a partir do padrão do perfil, conferidas na API; botão "Ver como" (só leitura) para o administrador
+- [x] Obras liberadas valem para o sistema todo (notas, contas a pagar, compras, visão geral, relatórios, alertas, exportações)
+- [x] Pacote do contador: ZIP do mês com os XML, PDFs/fotos e planilha das notas aprovadas (cobre parte do item 9 sem Google)
 - [x] Deploy na VPS (Docker, HTTPS via proxy, backup diário do PostgreSQL e do `storage/`)
 - [x] Recebimento de notas pelo e-mail da construtora (IMAP dentro do sistema; n8n opcional)
 - [x] Exportação CSV de lançamentos e títulos (para o financeiro e a contabilidade)
 - [x] Painel da plataforma: cadastro de construtoras, usuários, suspensão e acesso de suporte
 
 ## Ainda em aberto do plano de validação
-- [ ] Importação de obras e orçamento por planilha
+- [x] Importação de obras e orçamento por planilha (modelo .xlsx, também .csv; prévia com erro por linha antes de gravar)
 - [ ] Medição de erros por campo nos documentos reais (meta: ≥ 95% nos campos críticos)
 - [ ] NFS-e (serviços): padrões municipais mais comuns na região dos pilotos
-- [ ] Estorno de pagamento
+- [x] Estorno de pagamento (com motivo; fica no histórico do título e na auditoria)
 - [ ] Armazenamento de arquivos em object storage (S3-compatível)
 - [ ] Métrica de margem de contribuição por cliente
 - [ ] Previsões (custo final estimado da obra) quando houver histórico suficiente
@@ -60,7 +62,11 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - Ocorrência de gravidade alta vira alerta crítico; média vira alerta de atenção; baixa fica só no diário.
 - Sem internet: só o app de obra funciona offline (pedir material, receber entrega, foto, ocorrência, avanço). Aprovação de nota, pagamento e o resto do escritório continuam só online.
 - Fila do celular usa Idempotency-Key: reenvio nunca duplica. O registro guarda a hora em que aconteceu (limitada a agora e a 30 dias atrás); avanço antigo da fila não sobrescreve um mais novo.
-- Liberações: cada perfil tem um padrão; o administrador ajusta pessoa a pessoa. Administrador sempre vê tudo; Integrações e Configurações são só do administrador. A API confere a cada requisição (mudança vale na hora, sem novo login). Restrição de obras vale para o App de obra e a tela Obras.
+- Liberações: cada perfil tem um padrão; o administrador ajusta pessoa a pessoa. Administrador sempre vê tudo; Integrações e Configurações são só do administrador. A API confere a cada requisição (mudança vale na hora, sem novo login). Restrição de obras vale para o sistema todo.
 - "Ver como": token de 1 hora, só leitura (a API recusa qualquer alteração), registrado na auditoria.
 - Fotos do canteiro são reduzidas no celular (máx. 1600 px, JPEG) antes de enviar.
 - Nota só é vinculada sozinha ao pedido quando traz o número dele (xPed, ex.: PC-0012). Sem número, o sistema apenas sugere o pedido.
+- Obras liberadas: nota aparece se alguma apropriação é de obra liberada; antes de apropriar, vale a obra do pedido ou a sugerida. Nota sem obra nenhuma aparece para todos (precisa ser triada). Custo (relatórios, gráficos, lançamentos) soma só as apropriações nas obras liberadas.
+- Importação por planilha: código que já existe atualiza a obra, código novo cadastra. Grava só as linhas sem erro, tudo de uma vez; a confirmação relê o arquivo (não confia na prévia do navegador). Atualizar sem categorias mantém o orçamento por categoria atual.
+- Estorno não apaga o pagamento: marca como estornado, com motivo e quem fez, e devolve o valor ao título. Depois do estorno a nota pode ser cancelada, se for o caso.
+- Pacote do contador: notas APROVADAS pela data de emissão; XML/ com os originais, PDF e fotos/, notas.csv e lancamentos-por-obra.csv. Até 3.000 notas ou 400 MB por pacote.
