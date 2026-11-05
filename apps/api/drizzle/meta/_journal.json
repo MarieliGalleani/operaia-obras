@@ -71,6 +71,13 @@
       "when": 1793885935972,
       "tag": "0009_arquivos_por_chave",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793904394275,
+      "tag": "0010_margem_por_cliente",
+      "breakpoints": true
     }
   ]
 }

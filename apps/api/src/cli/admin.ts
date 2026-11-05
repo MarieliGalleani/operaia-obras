@@ -9,6 +9,7 @@
  *   node dist/cli/admin.js dona-plataforma --email voce@email.com   (libera o Painel da Plataforma)
  *   node dist/cli/admin.js copiar-arquivos-s3      (copia a pasta de arquivos para o S3 configurado; pode repetir)
  *   node dist/cli/admin.js conferir-arquivos       (confere se todo arquivo das notas e fotos existe no armazenamento atual)
+ *   node dist/cli/admin.js medir-arquivos          (anota o tamanho dos arquivos antigos, usado na margem por cliente)
  *
  * Em desenvolvimento: pnpm --filter @operaia-obras/api admin <comando> ...
  */
@@ -17,6 +18,7 @@ import { eq, sql } from 'drizzle-orm'
 import { pool, db } from '../db/client.js'
 import { companies } from '../db/schema.js'
 import { formatCnpj, normalizeCnpj } from '../domain/cnpj.js'
+import { measureMissingSizes } from '../services/margin.js'
 import { createCompany, createUser, resetPassword, type Role } from '../services/accounts.js'
 import { STORAGE_DIR, contentTypeOf, diskStorage, listLocalKeys, s3ConfigFromEnv, s3Storage, storage, toKey } from '../services/storage.js'
 
@@ -89,6 +91,17 @@ async function main() {
         if ((i + 1) % 50 === 0) console.log(`  ${i + 1}/${keys.length}`)
       }
       console.log(`✔ ${copied} copiado(s), ${skipped} já estavam lá. Agora coloque STORAGE_DRIVER=s3 no .env e rode ./scripts/deploy.sh`)
+      break
+    }
+    case 'medir-arquivos': {
+      // anota o tamanho dos arquivos antigos (custo de armazenamento na margem por cliente)
+      let total = 0
+      for (;;) {
+        const r = await measureMissingSizes(500)
+        total += r.measured
+        if (!r.measured || !r.remaining) break
+      }
+      console.log(`✔ ${total} arquivo(s) medidos`)
       break
     }
     case 'conferir-arquivos': {

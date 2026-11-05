@@ -69,6 +69,7 @@ export const purchaseOrderStatus = pgEnum('purchase_order_status', ['RASCUNHO', 
 export const alertSeverity = pgEnum('alert_severity', ['CRITICO', 'ATENCAO', 'INFO', 'OPORTUNIDADE'])
 export const alertStatus = pgEnum('alert_status', ['ABERTO', 'RESOLVIDO', 'IGNORADO'])
 export const companyStatus = pgEnum('company_status', ['ATIVA', 'SUSPENSA'])
+export const companyPlan = pgEnum('company_plan', ['PILOTO', 'ESSENCIAL', 'PROFISSIONAL', 'AVANCADO', 'CORTESIA'])
 
 const money = (name: string) => bigint(name, { mode: 'number' })
 const id = () => uuid('id').primaryKey().defaultRandom()
@@ -85,6 +86,11 @@ export const companies = pgTable('companies', {
   /** Anotações internas da OperaIA (plano, piloto, contato) — a construtora não vê */
   notes: text('notes'),
   suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+  /** Cobrança (só a dona vê): plano, mensalidade e implantação em centavos, mês em que a mensalidade começou (AAAA-MM) */
+  plan: companyPlan('plan'),
+  monthlyFee: money('monthly_fee'),
+  setupFee: money('setup_fee'),
+  billingSince: text('billing_since'),
   createdAt: createdAt(),
 })
 
@@ -186,6 +192,8 @@ export const documents = pgTable(
     category: costCategory('category'),
     fileName: text('file_name'),
     filePath: text('file_path'),
+    /** bytes do arquivo original (custo de armazenamento por construtora) */
+    fileSize: bigint('file_size', { mode: 'number' }),
     raw: jsonb('raw'),
     /** Pendências encontradas na validação */
     issues: jsonb('issues').$type<Issue[]>().notNull().default([]),
@@ -517,6 +525,7 @@ export const sitePhotos = pgTable(
       .notNull()
       .references(() => projects.id),
     url: text('url').notNull(),
+    fileSize: bigint('file_size', { mode: 'number' }),
     caption: text('caption'),
     occurrenceId: uuid('occurrence_id').references(() => occurrences.id, { onDelete: 'set null' }),
     receiptId: uuid('receipt_id').references(() => deliveryReceipts.id, { onDelete: 'set null' }),
@@ -573,3 +582,47 @@ export const mailInboxes = pgTable('mail_inboxes', {
   createdAt: createdAt(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+/**
+ * Margem de contribuição por cliente (área da dona).
+ * Parâmetros de custo da plataforma: uma linha só (id = 'default'), valores em centavos.
+ */
+export const platformSettings = pgTable('platform_settings', {
+  id: text('id').primaryKey(),
+  data: jsonb('data').$type<Partial<PlatformCostSettings>>().notNull().default({}),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+export interface PlatformCostSettings {
+  /** armazenamento por GB/mês (R2 ≈ US$ 0,015) */
+  storagePerGbCents: number
+  /** custo da hora de suporte/implantação */
+  supportHourCents: number
+  /** taxa do meio de pagamento: % da mensalidade em centésimos de ponto (ex.: 199 = 1,99%) */
+  paymentFeeBps: number
+  /** taxa fixa por cobrança (ex.: boleto) */
+  paymentFixedCents: number
+  /** custos fixos da plataforma no mês (VPS, domínio, ferramentas): não entram na margem, só no resultado */
+  fixedMonthlyCents: number
+  /** meta de margem de contribuição (%) */
+  targetPct: number
+}
+
+/** Custos variáveis lançados à mão por construtora e mês (suporte, IA, outros) */
+export const companyMonthCosts = pgTable(
+  'company_month_costs',
+  {
+    id: id(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    month: text('month').notNull(), // AAAA-MM
+    supportMinutes: integer('support_minutes').notNull().default(0),
+    aiCost: money('ai_cost').notNull().default(0),
+    otherCost: money('other_cost').notNull().default(0),
+    /** desconto ou acréscimo na receita do mês (negativo = desconto) */
+    revenueAdjust: money('revenue_adjust').notNull().default(0),
+    notes: text('notes'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('company_month_costs_uq').on(t.companyId, t.month)],
+)

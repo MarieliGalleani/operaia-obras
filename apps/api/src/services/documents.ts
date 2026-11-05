@@ -325,6 +325,7 @@ export async function ingestNfeXml(params: {
         category: cat.category,
         fileName: params.fileName,
         filePath,
+        fileSize: params.content.length,
         raw: nfe as any,
         issues,
         suggestedProjectId: match?.project.id ?? null,
@@ -416,6 +417,7 @@ export async function ingestManualFile(params: { companyId: string; userId?: str
       status: 'EM_REVISAO',
       fileName: params.fileName,
       filePath,
+      fileSize: params.content.length,
       issues: [{ code: 'DADOS_MANUAIS', severity: 'ATENCAO', message: 'Arquivo sem XML: preencha fornecedor, número, data e valor.' }],
       createdById: params.userId ?? null,
     })

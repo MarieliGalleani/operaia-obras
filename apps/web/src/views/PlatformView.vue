@@ -23,6 +23,7 @@ export interface CompanyUsage {
   lastDocumentAt: string | null
   lastLoginAt: string | null
   mail: { enabled: boolean; lastSuccessAt: string | null; lastError: string | null; documents: number } | null
+  billing: { plan: string | null; monthlyFee: number | null; setupFee: number | null; billingSince: string | null }
 }
 interface Overview {
   companiesActive: number
@@ -129,7 +130,10 @@ async function enter(c: CompanyUsage) {
       <div class="page-title">Plataforma</div>
       <div class="page-subtitle">Construtoras, acessos e uso do OperaIA Obras. Só você vê esta área.</div>
     </div>
-    <v-btn color="primary" prepend-icon="mdi-domain-plus" @click="openNew">Nova construtora</v-btn>
+    <div class="d-flex ga-2 flex-wrap">
+      <v-btn variant="outlined" prepend-icon="mdi-chart-donut" :to="{ name: 'platform-margin' }">Margem por cliente</v-btn>
+      <v-btn color="primary" prepend-icon="mdi-domain-plus" @click="openNew">Nova construtora</v-btn>
+    </div>
   </div>
 
   <v-row v-if="data" dense class="mb-2">

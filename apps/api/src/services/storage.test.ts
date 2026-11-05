@@ -37,8 +37,10 @@ async function contract(st: Storage) {
   const key = 'empresa-1/2026-11/abc123-NFe Ação (1).xml'
   const body = Buffer.from('<nfeProc>ção</nfeProc>')
   expect(await st.exists(key)).toBe(false)
+  expect(await st.size(key)).toBeNull()
   expect(await st.get(key)).toBeNull()
   await st.put(key, body, 'application/xml')
+  expect(await st.size(key)).toBeGreaterThan(0)
   expect(await st.exists(key)).toBe(true)
   expect((await st.get(key))!.equals(body)).toBe(true)
   const big = Buffer.alloc(3 * 1024 * 1024, 7)

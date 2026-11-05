@@ -47,7 +47,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - [x] NFS-e (serviços): padrão nacional (São Carlos e municípios que aderiram), ABRASF 1.0/2.x (sistemas municipais antigos) e Nota Paulistana; retenções (ISS, INSS, IR, PIS/COFINS/CSLL) e líquido ao prestador
 - [x] Estorno de pagamento (com motivo; fica no histórico do título e na auditoria)
 - [x] Armazenamento de arquivos em object storage (S3-compatível: Cloudflare R2, Backblaze B2, AWS), com cópia dos arquivos existentes e conferência
-- [ ] Métrica de margem de contribuição por cliente
+- [x] Métrica de margem de contribuição por cliente (Plataforma → Margem por cliente: receita da mensalidade − armazenamento, taxas, suporte, IA e outros; meta 70%; resultado após custos fixos e ponto de equilíbrio)
 - [ ] Previsões (custo final estimado da obra) quando houver histórico suficiente
 
 ## Decisões registradas
@@ -76,3 +76,4 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - NFS-e municipal (sem chave nacional) não duplica pela chave interna município + prestador + número. Mesmo número só é duplicidade dentro do mesmo tipo (NF-e 123 ≠ NFS-e 123).
 - NFS-e não gera alerta de preço unitário (serviço é descrito em texto livre). Categoria sai do item da LC 116 (07.02 empreitada → terceirizados; 07.20 topografia → serviços; 03.05 andaime → equipamentos).
 - CNPJ é guardado sem máscara e em maiúsculas (12 posições letra/número + 2 dígitos). Dígito verificador: cada caractere vale ASCII − 48, mesmos pesos do módulo 11; CNPJ só com números continua igual. A chave de acesso da NF-e/NFS-e pode ter letras nas posições do CNPJ e é validada pela mesma regra.
+- Margem por cliente: só custos variáveis entram na margem (armazenamento medido pelos arquivos de cada construtora, taxa do meio de pagamento, minutos de suporte lançados à mão, IA e outros). Custos fixos (servidor, domínio, ferramentas) entram só no resultado. Implantação é receita única, mostrada à parte. Cortesia e piloto sem mensalidade aparecem como "sem receita".

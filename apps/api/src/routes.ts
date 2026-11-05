@@ -627,7 +627,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const file = `${randomBytes(16).toString('hex')}.${kind}`
       await storage().put(MEDIA_KEY(file), content, contentTypeOf(file))
       try {
-        return reply.code(201).send(await addSitePhoto(me(req).companyId, fieldUser(req), id, { url: MEDIA_PREFIX + file, ...ref }))
+        return reply.code(201).send(await addSitePhoto(me(req).companyId, fieldUser(req), id, { url: MEDIA_PREFIX + file, fileSize: content.length, ...ref }))
       } catch (e) {
         await storage().delete(MEDIA_KEY(file)).catch(() => {})
         throw e

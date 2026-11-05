@@ -12,6 +12,7 @@ import { auditLogs, companies, users } from './db/schema.js'
 import { createCompany, createUser, temporaryPassword } from './services/accounts.js'
 import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { audit } from './services/audit.js'
+import { MONTH, PLAN_FEES, getMargin, saveCostSettings, saveMonthCosts } from './services/margin.js'
 import { AppError, badRequest, notFound } from './services/errors.js'
 import bcrypt from 'bcryptjs'
 
@@ -29,7 +30,7 @@ async function requireOwner(req: FastifyRequest) {
 /** Uso de cada construtora em uma consulta só */
 async function companiesWithUsage(id?: string) {
   const { rows } = await db.execute(sql`
-    SELECT c.id, c.name, c.cnpj, c.status, c.notes, c.created_at, c.suspended_at,
+    SELECT c.id, c.name, c.cnpj, c.status, c.notes, c.created_at, c.suspended_at, c.plan, c.monthly_fee, c.setup_fee, c.billing_since,
       (SELECT count(*)::int FROM users u WHERE u.company_id = c.id AND u.active) AS users_active,
       (SELECT count(*)::int FROM projects p WHERE p.company_id = c.id AND p.status = 'ATIVA') AS projects_active,
       (SELECT count(*)::int FROM fiscal_documents d WHERE d.company_id = c.id) AS documents_total,
@@ -51,6 +52,7 @@ async function companiesWithUsage(id?: string) {
     notes: r.notes as string | null,
     createdAt: r.created_at,
     suspendedAt: r.suspended_at,
+    billing: { plan: (r.plan as string | null) ?? null, monthlyFee: r.monthly_fee == null ? null : Number(r.monthly_fee), setupFee: r.setup_fee == null ? null : Number(r.setup_fee), billingSince: (r.billing_since as string | null) ?? null },
     usersActive: r.users_active as number,
     projectsActive: r.projects_active as number,
     documentsTotal: r.documents_total as number,
@@ -127,24 +129,88 @@ export async function registerPlatformRoutes(r: FastifyInstance) {
   r.patch('/api/platform/companies/:id', async (req) => {
     const owner = await requireOwner(req)
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-    const body = z.object({ name: z.string().min(2).optional(), status: z.enum(['ATIVA', 'SUSPENSA']).optional(), notes: z.string().nullable().optional() }).parse(req.body)
+    const body = z
+      .object({
+        name: z.string().min(2).optional(),
+        status: z.enum(['ATIVA', 'SUSPENSA']).optional(),
+        notes: z.string().nullable().optional(),
+        // cobrança (margem por cliente)
+        plan: z.enum(['PILOTO', 'ESSENCIAL', 'PROFISSIONAL', 'AVANCADO', 'CORTESIA']).nullable().optional(),
+        monthlyFee: z.number().int().min(0).max(100_000_000).nullable().optional(),
+        setupFee: z.number().int().min(0).max(100_000_000).nullable().optional(),
+        billingSince: z.string().regex(MONTH, 'Mês no formato AAAA-MM').nullable().optional(),
+      })
+      .parse(req.body)
     const current = await db.query.companies.findFirst({ where: eq(companies.id, id) })
     if (!current) throw notFound('Construtora')
     if (body.status === 'SUSPENSA' && current.id === owner.companyId) {
       throw badRequest('PROPRIA', 'Você não pode suspender a construtora do seu próprio login.')
     }
-    const [c] = await db
-      .update(companies)
-      .set({
-        ...(body.name && { name: body.name }),
-        ...(body.notes !== undefined && { notes: body.notes }),
-        ...(body.status && { status: body.status, suspendedAt: body.status === 'SUSPENSA' ? new Date() : null }),
-      })
-      .where(eq(companies.id, id))
-      .returning()
+    const { plan, monthlyFee, setupFee, billingSince } = body
+    const set = {
+      ...(body.name && { name: body.name }),
+      ...(body.notes !== undefined && { notes: body.notes }),
+      ...(body.status && { status: body.status, suspendedAt: body.status === 'SUSPENSA' ? new Date() : null }),
+      ...(plan !== undefined && { plan }),
+      // escolheu o plano sem informar valor: usa a mensalidade sugerida do plano (se ainda não tinha uma)
+      ...(monthlyFee !== undefined ? { monthlyFee } : plan ? { monthlyFee: current.monthlyFee ?? PLAN_FEES[plan] ?? null } : {}),
+      ...(setupFee !== undefined && { setupFee }),
+      ...(billingSince !== undefined && { billingSince }),
+    }
+    const [c] = Object.keys(set).length ? await db.update(companies).set(set).where(eq(companies.id, id)).returning() : [current]
     const action = body.status && body.status !== current.status ? (body.status === 'SUSPENSA' ? 'suspended' : 'reactivated') : 'updated'
     await audit(db, { companyId: id, userId: owner.id, entity: 'company', entityId: id, action, data: body })
-    return { id: c.id, name: c.name, status: c.status, notes: c.notes }
+    return {
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      notes: c.notes,
+      billing: { plan: c.plan, monthlyFee: c.monthlyFee, setupFee: c.setupFee, billingSince: c.billingSince },
+    }
+  })
+
+  // ------------------------------------------------ margem de contribuição por cliente
+  r.get('/api/platform/margin', async (req) => {
+    const { month } = z.object({ month: z.string().optional() }).parse(req.query)
+    return getMargin(month || undefined)
+  })
+
+  r.put('/api/platform/margin/settings', async (req) => {
+    const owner = await requireOwner(req)
+    const cents = z.number().int().min(0).max(1_000_000_000)
+    const body = z
+      .object({
+        storagePerGbCents: cents.optional(),
+        supportHourCents: cents.optional(),
+        paymentFeeBps: z.number().int().min(0).max(5_000).optional(),
+        paymentFixedCents: cents.optional(),
+        fixedMonthlyCents: cents.optional(),
+        targetPct: z.number().min(0).max(100).optional(),
+      })
+      .parse(req.body)
+    const data = await saveCostSettings(body)
+    await audit(db, { companyId: owner.companyId, userId: owner.id, entity: 'platform', entityId: owner.id, action: 'margin_settings_updated', data: body })
+    return data
+  })
+
+  r.put('/api/platform/companies/:id/month-costs/:month', async (req) => {
+    const owner = await requireOwner(req)
+    const { id, month } = z.object({ id: z.string().uuid(), month: z.string().regex(MONTH, 'Mês no formato AAAA-MM') }).parse(req.params)
+    const cents = z.number().int().min(-100_000_000).max(100_000_000)
+    const body = z
+      .object({
+        supportMinutes: z.number().int().min(0).max(100_000).optional(),
+        aiCost: cents.min(0).optional(),
+        otherCost: cents.min(0).optional(),
+        revenueAdjust: cents.optional(),
+        notes: z.string().max(500).nullable().optional(),
+      })
+      .parse(req.body)
+    const exists = await db.query.companies.findFirst({ where: eq(companies.id, id) })
+    if (!exists) throw notFound('Construtora')
+    const row = await saveMonthCosts(id, month, body)
+    await audit(db, { companyId: id, userId: owner.id, entity: 'company', entityId: id, action: 'month_costs_updated', data: { month, ...body } })
+    return row
   })
 
   r.post('/api/platform/companies/:id/rotate-key', async (req) => {

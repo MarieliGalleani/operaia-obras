@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import KpiCard from '@/components/KpiCard.vue'
 import MailInboxCard from '@/components/MailInboxCard.vue'
 import { api } from '@/lib/api'
-import { brl, cnpj, date } from '@/lib/format'
+import { brl, centsToInput, cnpj, date, parseBRL } from '@/lib/format'
 import { toast, toastError } from '@/lib/toast'
 import { useAuth } from '@/stores/auth'
 import type { CompanyUsage } from './PlatformView.vue'
@@ -53,6 +53,7 @@ async function load() {
   try {
     data.value = await api.get<Detail>(`/api/platform/companies/${route.params.id}`)
     notes.value = data.value.notes ?? ''
+    resetBilling()
   } catch (e) {
     toastError(e)
     router.replace('/plataforma')
@@ -84,6 +85,50 @@ async function toggleStatus() {
     toastError(e)
   }
 }
+// ---- cobrança (entra na margem por cliente)
+const PLANS = [
+  { value: 'PILOTO', title: 'Piloto' },
+  { value: 'ESSENCIAL', title: 'Essencial (R$ 399)' },
+  { value: 'PROFISSIONAL', title: 'Profissional (R$ 799)' },
+  { value: 'AVANCADO', title: 'Avançado (a partir de R$ 1.499)' },
+  { value: 'CORTESIA', title: 'Cortesia (sem cobrança)' },
+]
+const PLAN_FEE: Record<string, number> = { ESSENCIAL: 399_00, PROFISSIONAL: 799_00, AVANCADO: 1_499_00, CORTESIA: 0 }
+const billing = ref({ plan: null as string | null, monthlyFee: '', setupFee: '', billingSince: '' })
+const billingSaving = ref(false)
+function resetBilling() {
+  const b = data.value?.billing
+  billing.value = {
+    plan: b?.plan ?? null,
+    monthlyFee: b?.monthlyFee != null ? centsToInput(b.monthlyFee) : '',
+    setupFee: b?.setupFee != null ? centsToInput(b.setupFee) : '',
+    billingSince: b?.billingSince ?? '',
+  }
+}
+function onPlan(p: string | null) {
+  // sugere a mensalidade do plano quando o campo está vazio
+  if (p && PLAN_FEE[p] !== undefined && !billing.value.monthlyFee) billing.value.monthlyFee = centsToInput(PLAN_FEE[p])
+}
+async function saveBilling() {
+  billingSaving.value = true
+  try {
+    const b = billing.value
+    const res = await api.patch<{ billing: Detail['billing'] }>(`/api/platform/companies/${data.value!.id}`, {
+      plan: b.plan,
+      monthlyFee: b.monthlyFee ? parseBRL(b.monthlyFee) : null,
+      setupFee: b.setupFee ? parseBRL(b.setupFee) : null,
+      billingSince: b.billingSince || null,
+    })
+    data.value!.billing = res.billing
+    resetBilling()
+    toast('Cobrança salva')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    billingSaving.value = false
+  }
+}
+
 async function saveNotes() {
   try {
     await api.patch(`/api/platform/companies/${data.value!.id}`, { notes: notes.value || null })
@@ -254,6 +299,21 @@ async function rotateKey() {
       </v-col>
 
       <v-col cols="12" lg="4">
+        <v-card class="pa-5 mb-3">
+          <div class="d-flex align-center justify-space-between mb-1">
+            <div class="card-title">Cobrança</div>
+            <v-btn size="small" variant="text" :to="{ name: 'platform-margin' }">ver margem</v-btn>
+          </div>
+          <div class="text-caption muted mb-3">Entra na margem por cliente. Só você vê.</div>
+          <v-select id="company-plan" v-model="billing.plan" :items="PLANS" label="Plano" clearable class="mb-3" @update:model-value="onPlan" />
+          <v-row dense>
+            <v-col cols="6"><v-text-field id="company-fee" v-model="billing.monthlyFee" label="Mensalidade (R$)" placeholder="0,00" /></v-col>
+            <v-col cols="6"><v-text-field id="company-setup" v-model="billing.setupFee" label="Implantação (R$)" placeholder="0,00" /></v-col>
+          </v-row>
+          <v-text-field id="company-billing-since" v-model="billing.billingSince" type="month" label="Cobrança desde" class="mt-2" hint="Mês da primeira mensalidade" persistent-hint />
+          <v-btn class="mt-3" size="small" color="primary" variant="tonal" :loading="billingSaving" @click="saveBilling">Salvar cobrança</v-btn>
+        </v-card>
+
         <v-card class="pa-5 mb-3">
           <div class="card-title mb-1">Anotações internas</div>
           <div class="text-caption muted mb-3">Só você vê. Plano, condições do piloto, contatos.</div>

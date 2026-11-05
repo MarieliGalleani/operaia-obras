@@ -10,6 +10,7 @@ import { buildApp } from './app.js'
 import { db, pool } from './db/client.js'
 import { companies, documents, projectBudgets, projects, users } from './db/schema.js'
 import { hasMoto, startFakeS3 } from './dev/fake-s3.js'
+import { currentMonth } from './services/margin.js'
 import { STORAGE_DIR, diskStorage, s3Storage, setStorage, storage } from './services/storage.js'
 import { cnpjWithDigits, formatCnpj } from './domain/cnpj.js'
 import { buildNfeXml } from './dev/nfe-builder.js'
@@ -484,6 +485,94 @@ describe('painel da plataforma', () => {
     await api('PATCH', `/api/platform/users/${admin.id}`, { active: false }, ownerToken)
     expect((await api('GET', '/api/dashboard', undefined, tk)).statusCode).toBe(401)
     expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: pilotAdminEmail, password: reset.password } })).statusCode).toBe(403)
+  })
+})
+
+describe('margem de contribuição por cliente', () => {
+  let owner = ''
+  let tk = ''
+  let companyId = ''
+  let before: any = null
+  const cnpj = cnpjWithDigits(rnd() + '0001')
+  const month = currentMonth()
+  const prev = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)) - 2, 1)).toISOString().slice(0, 7)
+  const xmls: string[] = []
+
+  beforeAll(async () => {
+    const o = await makeCompany(cnpjWithDigits(rnd() + '0001'), `dona${rnd()}@operaia.com`)
+    await db.update(users).set({ isPlatformOwner: true }).where(eq(users.companyId, o.company.id))
+    // o token só ganha a área da plataforma num login novo
+    const email = (await db.query.users.findFirst({ where: eq(users.companyId, o.company.id) }))!.email
+    owner = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'senha123' }, remoteAddress: '10.8.0.1' })).json().token
+    const c = await makeCompany(cnpj, `t${rnd()}@teste.com`)
+    tk = c.token
+    companyId = c.company.id
+    before = (await api('GET', '/api/platform/margin', undefined, owner)).json().settings
+    for (const n of [1, 2]) {
+      const xml = buildNfeXml({
+        number: n,
+        issueDate: new Date().toISOString().slice(0, 10) + 'T10:00:00-03:00',
+        issuer: { cnpj: supplierCnpj, name: 'Fornecedor Teste Ltda' },
+        recipientCnpj: cnpj,
+        items: [{ description: 'CIMENTO CP II 50KG', ncm: '25232910', unit: 'SC', quantity: 10, unitPrice: 40 }],
+      }).xml
+      xmls.push(xml)
+      expect((await upload(xml, `m${n}.xml`, tk)).json().results[0].status).toBe('CRIADO')
+    }
+  })
+  afterAll(async () => {
+    if (before) await api('PUT', '/api/platform/margin/settings', before, owner)
+  })
+
+  it('só a dona vê e altera', async () => {
+    expect((await api('GET', '/api/platform/margin', undefined, tk)).statusCode).toBe(403)
+    expect((await api('PUT', `/api/platform/companies/${companyId}/month-costs/${month}`, { supportMinutes: 1 }, tk)).statusCode).toBe(403)
+    expect((await api('GET', '/api/platform/margin?month=2026-13', undefined, owner)).statusCode).toBe(400)
+  })
+
+  it('calcula receita, custos variáveis, margem e meta', async () => {
+    const p = await api('PATCH', `/api/platform/companies/${companyId}`, { plan: 'ESSENCIAL', billingSince: month }, owner)
+    expect(p.statusCode).toBe(200)
+    expect(p.json().billing).toMatchObject({ plan: 'ESSENCIAL', monthlyFee: 399_00, billingSince: month })
+    await api('PUT', '/api/platform/margin/settings', { storagePerGbCents: 1_000_000_000, supportHourCents: 60_00, paymentFeeBps: 199, paymentFixedCents: 3_49, fixedMonthlyCents: 500_00, targetPct: 70 }, owner)
+    const mc = await api('PUT', `/api/platform/companies/${companyId}/month-costs/${month}`, { supportMinutes: 90, aiCost: 15_00, revenueAdjust: -39_00, notes: 'desconto de piloto' }, owner)
+    expect(mc.statusCode).toBe(200)
+
+    const m = (await api('GET', `/api/platform/margin?month=${month}`, undefined, owner)).json()
+    const row = m.rows.find((r: any) => r.companyId === companyId)
+    const bytes = xmls.reduce((a, x) => a + Buffer.byteLength(x), 0)
+    expect(row.usage.storageBytes).toBe(bytes)
+    expect(row.usage.documentsInMonth).toBe(2)
+    expect(row.revenue).toBe(360_00)
+    expect(row.costs).toEqual({ storage: Math.round((bytes / 1e9) * 1_000_000_000), payment: 716 + 349, support: 90_00, ai: 15_00, other: 0 })
+    expect(row.variableCosts).toBe(row.costs.storage + 1065 + 90_00 + 15_00)
+    expect(row.margin).toBe(360_00 - row.variableCosts)
+    expect(row.marginPct).toBe(Math.round((row.margin / 360_00) * 1000) / 10)
+    expect(row.marginStatus).toBe(row.marginPct >= 70 ? 'OK' : 'ABAIXO')
+    expect(row.manual.notes).toBe('desconto de piloto')
+    expect(m.totals.fixedCosts).toBe(500_00)
+    expect(m.trend).toHaveLength(6)
+    expect(m.trend[5].month).toBe(month)
+
+    const old = (await api('GET', `/api/platform/margin?month=${prev}`, undefined, owner)).json()
+    const r0 = old.rows.find((r: any) => r.companyId === companyId)
+    // empresa criada neste mês não aparece no mês anterior
+    expect(r0).toBeUndefined()
+  })
+
+  it('mede o tamanho dos arquivos antigos que não tinham tamanho anotado', async () => {
+    await db.update(documents).set({ fileSize: null }).where(eq(documents.companyId, companyId))
+    const m = (await api('GET', `/api/platform/margin?month=${month}`, undefined, owner)).json()
+    const row = m.rows.find((r: any) => r.companyId === companyId)
+    expect(row.usage.storageBytes).toBe(xmls.reduce((a, x) => a + Buffer.byteLength(x), 0))
+  })
+
+  it('cortesia não gera receita', async () => {
+    await api('PATCH', `/api/platform/companies/${companyId}`, { plan: 'CORTESIA' }, owner)
+    const row = (await api('GET', `/api/platform/margin?month=${month}`, undefined, owner)).json().rows.find((r: any) => r.companyId === companyId)
+    expect(row.revenue).toBe(0)
+    expect(row.marginStatus).toBe('SEM_RECEITA')
+    expect(row.marginPct).toBeNull()
   })
 })
 

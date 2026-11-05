@@ -12,6 +12,7 @@ import { randomBytes } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { buildNfeXml } from '../dev/nfe-builder.js'
 import { buildNfseXml } from '../dev/nfse-builder.js'
+import { saveCostSettings, saveMonthCosts } from '../services/margin.js'
 import { cnpjWithDigits } from '../domain/cnpj.js'
 import { approveDocument, ingestNfeXml, listPayables, registerPayment } from '../services/documents.js'
 import { approveOrder, createOrder } from '../services/purchases.js'
@@ -479,6 +480,17 @@ async function main() {
     await ingestNfeXml({ companyId: company.id, userId: admin.id, fileName: `NFSe-${s.trade}-${nfseNumber - 1}.xml`, content: Buffer.from(xml), source: 'EMAIL' })
   }
   console.log('✔ 5 notas na fila de revisão (2 sem obra, 1 possível duplicidade, 2 NFS-e com retenção)')
+  // cobrança da Alpha (margem por cliente na área da dona): Profissional há 5 meses, com suporte lançado
+  const monthAgo = (n: number) => {
+    const d = new Date()
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - n, 1)).toISOString().slice(0, 7)
+  }
+  await db.update(companies).set({ plan: 'PROFISSIONAL', monthlyFee: 799_00, setupFee: 2_500_00, billingSince: monthAgo(4) }).where(eq(companies.id, company.id))
+  for (const [n, minutes, notes] of [[4, 360, 'implantação e treinamento'], [3, 150, 'ajuste de categorias'], [2, 60, null], [1, 45, null], [0, 30, null]] as const) {
+    await saveMonthCosts(company.id, monthAgo(n), { supportMinutes: minutes, notes })
+  }
+  await saveCostSettings({ fixedMonthlyCents: 180_00 })
+  console.log('✔ cobrança e custos de suporte da Alpha (margem por cliente)')
   console.log(`\nLogin: admin@alpha.com.br / operaia123\nChave de integração: ${company.apiKey}`)
 }
 

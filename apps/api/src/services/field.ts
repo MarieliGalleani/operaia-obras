@@ -385,7 +385,7 @@ export async function addSitePhoto(
   companyId: string,
   user: User,
   projectId: string,
-  input: { url: string; caption?: string | null; occurrenceId?: string | null; receiptId?: string | null; stageUpdateId?: string | null; happenedAt?: string | null },
+  input: { url: string; fileSize?: number; caption?: string | null; occurrenceId?: string | null; receiptId?: string | null; stageUpdateId?: string | null; happenedAt?: string | null },
 ) {
   await ownProject(companyId, projectId)
   // o vínculo precisa ser da mesma obra
@@ -407,6 +407,7 @@ export async function addSitePhoto(
       companyId,
       projectId,
       url: input.url,
+      fileSize: input.fileSize ?? null,
       caption: input.caption,
       occurrenceId: input.occurrenceId,
       receiptId: input.receiptId,

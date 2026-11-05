@@ -20,6 +20,8 @@ export interface Storage {
   /** null quando o arquivo não existe */
   get(key: string): Promise<Buffer | null>
   exists(key: string): Promise<boolean>
+  /** bytes do arquivo; null quando não existe */
+  size(key: string): Promise<number | null>
   delete(key: string): Promise<void>
 }
 
@@ -67,6 +69,12 @@ export function diskStorage(dir: string): Storage {
       return stat(full(key)).then(
         () => true,
         () => false,
+      )
+    },
+    async size(key) {
+      return stat(full(key)).then(
+        (s) => s.size,
+        () => null,
       )
     },
     async delete(key) {
@@ -208,6 +216,12 @@ export function s3Storage(cfg: S3Config): Storage {
       if (res.status === 404) return false
       if (!res.ok) await fail(res, 'conferir')
       return true
+    },
+    async size(key) {
+      const res = await send('HEAD', key)
+      if (res.status === 404) return null
+      if (!res.ok) await fail(res, 'conferir')
+      return Number(res.headers.get('content-length') ?? 0)
     },
     async delete(key) {
       const res = await send('DELETE', key)
