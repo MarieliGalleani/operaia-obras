@@ -131,6 +131,7 @@ async function enter(c: CompanyUsage) {
       <div class="page-subtitle">Construtoras, acessos e uso do OperaIA Obras. Só você vê esta área.</div>
     </div>
     <div class="d-flex ga-2 flex-wrap">
+      <v-btn variant="outlined" prepend-icon="mdi-bullseye-arrow" :to="{ name: 'platform-accuracy' }">Acerto das sugestões</v-btn>
       <v-btn variant="outlined" prepend-icon="mdi-chart-donut" :to="{ name: 'platform-margin' }">Margem por cliente</v-btn>
       <v-btn color="primary" prepend-icon="mdi-domain-plus" @click="openNew">Nova construtora</v-btn>
     </div>

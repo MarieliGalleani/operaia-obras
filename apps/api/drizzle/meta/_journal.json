@@ -78,6 +78,13 @@
       "when": 1793904394275,
       "tag": "0010_margem_por_cliente",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793975664122,
+      "tag": "0011_medicao_de_acerto",
+      "breakpoints": true
     }
   ]
 }

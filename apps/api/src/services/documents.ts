@@ -16,10 +16,13 @@ import {
   payables,
   payments,
   projects,
+  suggestionChecks,
   suppliers,
   type CostCategory,
+  type DocumentSuggestion,
   type Issue,
 } from '../db/schema.js'
+import { compareSuggestion } from '../domain/accuracy.js'
 import { findProjectInText, suggestCategory, suggestServiceCategory } from '../domain/classifier.js'
 import { formatCnpj, isValidAccessKey, isValidCnpj, isValidCpf, normalizeCnpj } from '../domain/cnpj.js'
 import { formatBRL } from '../domain/money.js'
@@ -402,6 +405,7 @@ export async function ingestNfeXml(params: {
   })
 
   await autoLinkDocument(params.companyId, documentId, nfe.purchaseOrder)
+  await snapshotSuggestion(documentId, nfe.installments.length ? nfe.installments.map((i) => ({ dueDate: i.dueDate, amount: i.amountCents })) : null)
   return { status: 'CRIADO', documentId, document: await getDocument(params.companyId, documentId) }
 }
 
@@ -589,6 +593,24 @@ export interface ApproveInput {
   acknowledgeCritical?: boolean
 }
 
+/** Guarda o que o sistema sugeriu (depois do vínculo com o pedido), para medir o acerto na aprovação. */
+async function snapshotSuggestion(documentId: string, installments: DocumentSuggestion['installments'], read?: DocumentSuggestion['read']) {
+  const [d] = await db.select().from(documents).where(eq(documents.id, documentId))
+  if (!d) return
+  const reason = d.suggestionReason ?? ''
+  const suggestion: DocumentSuggestion = {
+    source: read ? 'IA' : 'XML',
+    projectId: d.suggestedProjectId,
+    projectReason: reason.split('; categoria:')[0].replace(/^categoria:.*/, '') || null,
+    category: d.category,
+    categoryReason: /categoria: (.*)/.exec(reason)?.[1] ?? null,
+    purchaseOrderId: d.purchaseOrderId,
+    installments,
+    ...(read && { read }),
+  }
+  await db.update(documents).set({ suggestion }).where(eq(documents.id, documentId))
+}
+
 export async function approveDocument(companyId: string, userId: string, id: string, input: ApproveInput) {
   const affectedProjects = await db.transaction(async (tx) => {
     const [doc] = await tx.select().from(documents).where(and(eq(documents.companyId, companyId), eq(documents.id, id))).for('update')
@@ -660,6 +682,25 @@ export async function approveDocument(companyId: string, userId: string, id: str
         updatedAt: new Date(),
       })
       .where(eq(documents.id, id))
+
+    // medição de acerto: sugestão da entrada × o que foi aprovado
+    if (doc.suggestion) {
+      const checks = compareSuggestion(doc.suggestion, {
+        allocations: input.allocations,
+        installments,
+        purchaseOrderId: doc.purchaseOrderId,
+        supplierId: doc.supplierId,
+        totalAmount: doc.totalAmount,
+        number: doc.number,
+        issueDate: doc.issueDate ? new Date(doc.issueDate).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : null,
+      })
+      if (checks.length) {
+        await tx
+          .insert(suggestionChecks)
+          .values(checks.map((c) => ({ companyId, documentId: id, source: doc.suggestion!.source, ...c })))
+          .onConflictDoNothing()
+      }
+    }
 
     await resolveAlerts(tx, companyId, [`noproject:${id}`, `dest:${id}`, `dup:${id}`])
     if (doc.purchaseOrderId) await refreshOrderStatus(tx, doc.purchaseOrderId)

@@ -8,7 +8,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from './app.js'
 import { db, pool } from './db/client.js'
-import { companies, documents, projectBudgets, projects, users } from './db/schema.js'
+import { companies, documents, projectBudgets, projects, suggestionChecks, users } from './db/schema.js'
 import { hasMoto, startFakeS3 } from './dev/fake-s3.js'
 import { currentMonth } from './services/margin.js'
 import { STORAGE_DIR, diskStorage, s3Storage, setStorage, storage } from './services/storage.js'
@@ -485,6 +485,80 @@ describe('painel da plataforma', () => {
     await api('PATCH', `/api/platform/users/${admin.id}`, { active: false }, ownerToken)
     expect((await api('GET', '/api/dashboard', undefined, tk)).statusCode).toBe(401)
     expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: pilotAdminEmail, password: reset.password } })).statusCode).toBe(403)
+  })
+})
+
+describe('medição de acerto das sugestões', () => {
+  let owner = ''
+  let tk = ''
+  let companyId = ''
+  let obraA = ''
+  let obraB = ''
+  const cnpj = cnpjWithDigits(rnd() + '0001')
+  const doc = (n: number, extraInfo: string, installments?: { dueDate: string; amount: number }[]) =>
+    buildNfeXml({
+      number: n,
+      issueDate: new Date().toISOString().slice(0, 10) + 'T10:00:00-03:00',
+      issuer: { cnpj: supplierCnpj, name: 'Fornecedor Teste Ltda' },
+      recipientCnpj: cnpj,
+      items: [{ description: 'CIMENTO CP II 50KG', ncm: '25232910', unit: 'SC', quantity: 10, unitPrice: 40 }],
+      installments,
+      extraInfo,
+    }).xml
+
+  beforeAll(async () => {
+    const o = await makeCompany(cnpjWithDigits(rnd() + '0001'), `dona${rnd()}@operaia.com`)
+    await db.update(users).set({ isPlatformOwner: true }).where(eq(users.companyId, o.company.id))
+    const email = (await db.query.users.findFirst({ where: eq(users.companyId, o.company.id) }))!.email
+    owner = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'senha123' }, remoteAddress: '10.7.0.1' })).json().token
+    const c = await makeCompany(cnpj, `t${rnd()}@teste.com`)
+    tk = c.token
+    companyId = c.company.id
+    ;[{ id: obraA }, { id: obraB }] = await db
+      .insert(projects)
+      .values([
+        { companyId, code: 'AC-01', name: 'Residencial Acerto', budgetTotal: 100_000_00 },
+        { companyId, code: 'AC-02', name: 'Galpão Outro', budgetTotal: 100_000_00 },
+      ])
+      .returning()
+  })
+
+  const approve = (id: string, projectId: string, category: string, installments?: { dueDate: string; amount: number }[]) =>
+    api('POST', `/api/documents/${id}/approve`, { allocations: [{ projectId, category, amount: 400_00 }], installments, acknowledgeCritical: true }, tk)
+
+  it('aprovar igual à sugestão conta acerto; trocar conta erro; sem obra conta "sem sugestão"', async () => {
+    const d1 = (await upload(doc(1, 'Obra AC-01', [{ dueDate: '2030-02-10', amount: 400 }]), 'a1.xml', tk)).json().results[0]
+    expect(d1.document.suggestedProjectId).toBe(obraA)
+    expect((await approve(d1.documentId, obraA, d1.document.category)).statusCode).toBe(200)
+
+    const d2 = (await upload(doc(2, 'Obra AC-01', [{ dueDate: '2030-02-10', amount: 400 }]), 'a2.xml', tk)).json().results[0]
+    expect((await approve(d2.documentId, obraB, 'SERVICOS', [{ dueDate: '2030-03-10', amount: 400_00 }])).statusCode).toBe(200)
+
+    const d3 = (await upload(doc(3, 'sem referência'), 'a3.xml', tk)).json().results[0]
+    expect(d3.document.suggestedProjectId).toBeNull()
+    expect((await approve(d3.documentId, obraA, d3.document.category)).statusCode).toBe(200)
+
+    const rows = await db.select().from(suggestionChecks).where(eq(suggestionChecks.companyId, companyId))
+    const of = (docId: string) => Object.fromEntries(rows.filter((r) => r.documentId === docId).map((r) => [r.field, r.outcome]))
+    expect(of(d1.documentId)).toEqual({ obra: 'ACERTOU', categoria: 'ACERTOU', vencimento: 'ACERTOU' })
+    expect(of(d2.documentId)).toEqual({ obra: 'ERROU', categoria: 'ERROU', vencimento: 'ERROU' })
+    expect(of(d3.documentId)).toEqual({ obra: 'SEM_SUGESTAO', categoria: 'ACERTOU' })
+  })
+
+  it('relatório da dona: taxa por campo, por construtora e onde errou', async () => {
+    expect((await api('GET', '/api/platform/accuracy', undefined, tk)).statusCode).toBe(403)
+    const r = (await api('GET', `/api/platform/accuracy?days=30&companyId=${companyId}`, undefined, owner)).json()
+    expect(r.target).toBe(95)
+    expect(r.documentsMeasured).toBe(3)
+    const f = Object.fromEntries(r.fields.map((x: any) => [x.field, x]))
+    expect(f.obra).toMatchObject({ acertou: 1, errou: 1, semSugestao: 1, total: 3, rate: 33.3, precision: 50 })
+    expect(f.categoria).toMatchObject({ acertou: 2, errou: 1, rate: 66.7 })
+    expect(f.vencimento).toMatchObject({ acertou: 1, errou: 1, rate: 50 })
+    expect(r.critical).toMatchObject({ acertou: 4, errou: 3, semSugestao: 1, total: 8, rate: 50 })
+    expect(r.companies).toHaveLength(1)
+    const obraMiss = r.misses.find((m: any) => m.field === 'obra' && m.outcome === 'ERROU')
+    expect(obraMiss).toMatchObject({ suggested: 'AC-01 · Residencial Acerto', final: 'AC-02 · Galpão Outro', supplier: 'Fornecedor Teste Ltda' })
+    expect(obraMiss.reason).toBeTruthy()
   })
 })
 

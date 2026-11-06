@@ -12,6 +12,7 @@ import { auditLogs, companies, users } from './db/schema.js'
 import { createCompany, createUser, temporaryPassword } from './services/accounts.js'
 import { PROVIDERS, checkInbox, getInbox, removeInbox, saveInbox, setInboxEnabled } from './services/mailbox.js'
 import { audit } from './services/audit.js'
+import { getAccuracy } from './services/accuracy.js'
 import { MONTH, PLAN_FEES, getMargin, saveCostSettings, saveMonthCosts } from './services/margin.js'
 import { AppError, badRequest, notFound } from './services/errors.js'
 import bcrypt from 'bcryptjs'
@@ -167,6 +168,12 @@ export async function registerPlatformRoutes(r: FastifyInstance) {
       notes: c.notes,
       billing: { plan: c.plan, monthlyFee: c.monthlyFee, setupFee: c.setupFee, billingSince: c.billingSince },
     }
+  })
+
+  // ------------------------------------------------ medição de acerto das sugestões (meta ≥ 95%)
+  r.get('/api/platform/accuracy', async (req) => {
+    const q = z.object({ days: z.coerce.number().int().min(1).max(3650).optional(), companyId: z.string().uuid().optional() }).parse(req.query)
+    return getAccuracy({ days: q.days ?? null, companyId: q.companyId ?? null })
   })
 
   // ------------------------------------------------ margem de contribuição por cliente

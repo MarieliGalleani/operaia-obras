@@ -43,7 +43,7 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 
 ## Ainda em aberto do plano de validação
 - [x] Importação de obras e orçamento por planilha (modelo .xlsx, também .csv; prévia com erro por linha antes de gravar)
-- [ ] Medição de erros por campo nos documentos reais (meta: ≥ 95% nos campos críticos)
+- [x] Medição de erros por campo nos documentos reais (meta: ≥ 95% nos campos críticos) — Plataforma → Acerto das sugestões: na aprovação, o sistema compara o que sugeriu (obra, categoria, vencimentos, pedido; e, com IA, fornecedor/valor/número/data) com o que foi aprovado
 - [x] NFS-e (serviços): padrão nacional (São Carlos e municípios que aderiram), ABRASF 1.0/2.x (sistemas municipais antigos) e Nota Paulistana; retenções (ISS, INSS, IR, PIS/COFINS/CSLL) e líquido ao prestador
 - [x] Estorno de pagamento (com motivo; fica no histórico do título e na auditoria)
 - [x] Armazenamento de arquivos em object storage (S3-compatível: Cloudflare R2, Backblaze B2, AWS), com cópia dos arquivos existentes e conferência
@@ -77,3 +77,4 @@ Marcado conforme vai ficando pronto. A ordem é a fila de execução.
 - NFS-e não gera alerta de preço unitário (serviço é descrito em texto livre). Categoria sai do item da LC 116 (07.02 empreitada → terceirizados; 07.20 topografia → serviços; 03.05 andaime → equipamentos).
 - CNPJ é guardado sem máscara e em maiúsculas (12 posições letra/número + 2 dígitos). Dígito verificador: cada caractere vale ASCII − 48, mesmos pesos do módulo 11; CNPJ só com números continua igual. A chave de acesso da NF-e/NFS-e pode ter letras nas posições do CNPJ e é validada pela mesma regra.
 - Margem por cliente: só custos variáveis entram na margem (armazenamento medido pelos arquivos de cada construtora, taxa do meio de pagamento, minutos de suporte lançados à mão, IA e outros). Custos fixos (servidor, domínio, ferramentas) entram só no resultado. Implantação é receita única, mostrada à parte. Cortesia e piloto sem mensalidade aparecem como "sem receita".
+- Medição de acerto: a sugestão é guardada na entrada da nota (depois do vínculo com o pedido) e comparada na aprovação. Acerto = aprovado sem mexer ÷ todos os campos conferidos, contando "sem sugestão" como trabalho da pessoa. Dados lidos do XML são exatos e não entram; vencimento só conta quando veio na nota; pedido aparece mas não conta na meta. Notas aprovadas antes desta versão não têm sugestão guardada e ficam fora.

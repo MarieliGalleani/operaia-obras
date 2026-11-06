@@ -24,6 +24,7 @@ const router = createRouter({
     { path: '/configuracoes', name: 'settings', component: () => import('./views/SettingsView.vue'), meta: { title: 'Configurações' } },
     { path: '/integracoes', name: 'integrations', component: () => import('./views/IntegrationsView.vue'), meta: { title: 'Integrações' } },
     { path: '/plataforma', name: 'platform', component: () => import('./views/PlatformView.vue'), meta: { title: 'Plataforma', owner: true } },
+    { path: '/plataforma/acerto', name: 'platform-accuracy', component: () => import('./views/AccuracyView.vue'), meta: { title: 'Acerto das sugestões', owner: true } },
     { path: '/plataforma/margem', name: 'platform-margin', component: () => import('./views/MarginView.vue'), meta: { title: 'Margem por cliente', owner: true } },
     { path: '/plataforma/:id', name: 'platform-company', component: () => import('./views/PlatformCompanyView.vue'), meta: { title: 'Plataforma', owner: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },

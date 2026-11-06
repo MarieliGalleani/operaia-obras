@@ -197,6 +197,8 @@ export const documents = pgTable(
     raw: jsonb('raw'),
     /** Pendências encontradas na validação */
     issues: jsonb('issues').$type<Issue[]>().notNull().default([]),
+    /** o que o sistema sugeriu ao receber a nota (base da medição de acerto na aprovação) */
+    suggestion: jsonb('suggestion').$type<DocumentSuggestion>(),
     suggestedProjectId: uuid('suggested_project_id').references(() => projects.id),
     suggestionReason: text('suggestion_reason'),
     /** Pedido de compra que esta nota atende (opcional: nota sem pedido pode ser aprovada, com aviso) */
@@ -625,4 +627,42 @@ export const companyMonthCosts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('company_month_costs_uq').on(t.companyId, t.month)],
+)
+
+/** Sugestões do sistema guardadas na entrada da nota, para medir o acerto quando alguém aprova. */
+export interface DocumentSuggestion {
+  source: 'XML' | 'IA'
+  projectId: string | null
+  /** como o sistema achou a obra (texto da nota, pedido de compra, histórico do fornecedor) */
+  projectReason?: string | null
+  category: string | null
+  categoryReason?: string | null
+  purchaseOrderId: string | null
+  /** vencimentos que vieram na própria nota (duplicatas); null quando a nota não traz */
+  installments: Array<{ dueDate: string; amount: number }> | null
+  /** campos lidos do documento quando a leitura não é exata (PDF/foto por IA) */
+  read?: { supplierId?: string | null; totalAmount?: number | null; number?: string | null; issueDate?: string | null }
+}
+
+export const checkOutcome = pgEnum('check_outcome', ['ACERTOU', 'ERROU', 'SEM_SUGESTAO'])
+
+/** Resultado de cada campo sugerido × o que foi aprovado (uma linha por nota e campo). */
+export const suggestionChecks = pgTable(
+  'suggestion_checks',
+  {
+    id: id(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    source: text('source').notNull(), // XML | IA
+    field: text('field').notNull(), // obra | categoria | vencimento | pedido | fornecedor | valor | numero | emissao
+    outcome: checkOutcome('outcome').notNull(),
+    suggested: text('suggested'),
+    final: text('final'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('suggestion_checks_doc_field_uq').on(t.documentId, t.field), index('suggestion_checks_company_idx').on(t.companyId, t.createdAt)],
 )
