@@ -491,6 +491,22 @@ async function main() {
   }
   await saveCostSettings({ fixedMonthlyCents: 180_00 })
   console.log('✔ cobrança e custos de suporte da Alpha (margem por cliente)')
+
+  // obra por administração com portal do proprietário (Casa Jardim)
+  const [casa] = await db.select().from(projects).where(and(eq(projects.companyId, company.id), eq(projects.code, 'OBR-003')))
+  await db
+    .update(projects)
+    .set({ contractType: 'ADMINISTRACAO', ownerName: 'Ricardo Almeida', ownerEmail: 'proprietario@alpha.com.br' })
+    .where(eq(projects.id, casa.id))
+  await db.insert(users).values({
+    companyId: company.id,
+    name: 'Ricardo Almeida',
+    email: 'proprietario@alpha.com.br',
+    passwordHash,
+    role: 'PROPRIETARIO',
+    permissions: { projectIds: [casa.id] },
+  })
+  console.log('✔ Casa Jardim por administração (15%) com portal do proprietário: proprietario@alpha.com.br')
   console.log(`\nLogin: admin@alpha.com.br / operaia123\nChave de integração: ${company.apiKey}`)
 }
 

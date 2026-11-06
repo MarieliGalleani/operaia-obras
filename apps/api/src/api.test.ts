@@ -4,11 +4,11 @@
  */
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'node:crypto'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from './app.js'
 import { db, pool } from './db/client.js'
-import { companies, documents, projectBudgets, projects, suggestionChecks, users } from './db/schema.js'
+import { companies, documents, projectBudgets, projects, purchaseOrders, suggestionChecks, suppliers, users } from './db/schema.js'
 import { hasMoto, startFakeS3 } from './dev/fake-s3.js'
 import { currentMonth } from './services/margin.js'
 import { STORAGE_DIR, diskStorage, s3Storage, setStorage, storage } from './services/storage.js'
@@ -559,6 +559,167 @@ describe('medição de acerto das sugestões', () => {
     const obraMiss = r.misses.find((m: any) => m.field === 'obra' && m.outcome === 'ERROU')
     expect(obraMiss).toMatchObject({ suggested: 'AC-01 · Residencial Acerto', final: 'AC-02 · Galpão Outro', supplier: 'Fornecedor Teste Ltda' })
     expect(obraMiss.reason).toBeTruthy()
+  })
+})
+
+describe('portal do proprietário e prévia da medição', () => {
+  let tk = ''
+  let companyId = ''
+  let obra = ''
+  let outra = ''
+  let ownerTk = ''
+  let ownerId = ''
+  let docMaterial = ''
+  let docOutra = ''
+  const cnpj = cnpjWithDigits(rnd() + '0001')
+  const ownerEmail = `dono${rnd()}@obra.com`
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+  const inject = (method: 'PUT' | 'DELETE', url: string, payload?: unknown, auth = tk) =>
+    app.inject({ method, url, payload: payload as any, headers: { authorization: `Bearer ${auth}` } })
+  const note = (n: number, extraInfo: string, unitPrice: number) =>
+    buildNfeXml({
+      number: n,
+      issueDate: `${today}T10:00:00-03:00`,
+      issuer: { cnpj: supplierCnpj, name: 'Fornecedor Teste Ltda' },
+      recipientCnpj: cnpj,
+      items: [{ description: 'CIMENTO CP II 50KG', ncm: '25232910', unit: 'SC', quantity: 10, unitPrice }],
+      extraInfo,
+    }).xml
+
+  beforeAll(async () => {
+    const c = await makeCompany(cnpj, `t${rnd()}@teste.com`)
+    tk = c.token
+    companyId = c.company.id
+    ;[{ id: obra }, { id: outra }] = await db
+      .insert(projects)
+      .values([
+        { companyId, code: 'ADM-1', name: 'Casa do Seu João', budgetTotal: 500_000_00 },
+        { companyId, code: 'ADM-2', name: 'Outra Obra', budgetTotal: 100_000_00 },
+      ])
+      .returning()
+  })
+
+  it('construtora configura o contrato por administração (taxa padrão de 15%, fechamento no fim do mês)', async () => {
+    const p = await api('PATCH', `/api/projects/${obra}`, { contractType: 'ADMINISTRACAO', ownerName: 'João Proprietário', ownerEmail }, tk)
+    expect(p.statusCode).toBe(200)
+    const m = (await api('GET', `/api/projects/${obra}/measurement`, undefined, tk)).json()
+    expect(m.contract).toMatchObject({ type: 'ADMINISTRACAO', adminFeeBps: 1500, adminFeeFromDefault: true, measurementDay: null, ownerPaysSuppliers: false })
+    expect(m.period.month).toBe(today.slice(0, 7))
+  })
+
+  it('prévia: realizado por grupo + previsto (nota em conferência e pedido em aberto) + taxa sobre tudo', async () => {
+    const d1 = (await upload(note(1, 'Obra ADM-1', 100), 'm1.xml', tk)).json().results[0] // R$ 1.000
+    docMaterial = d1.documentId
+    expect((await api('POST', `/api/documents/${d1.documentId}/approve`, { allocations: [{ projectId: obra, category: 'MATERIAIS', amount: 1_000_00 }], acknowledgeCritical: true }, tk)).statusCode).toBe(200)
+    const d2 = (await upload(note(2, 'Obra ADM-1 mão de obra', 200), 'm2.xml', tk)).json().results[0] // R$ 2.000, rateio 50/50
+    expect(
+      (
+        await api(
+          'POST',
+          `/api/documents/${d2.documentId}/approve`,
+          { allocations: [{ projectId: obra, category: 'MAO_DE_OBRA', amount: 1_000_00 }, { projectId: outra, category: 'MAO_DE_OBRA', amount: 1_000_00 }], acknowledgeCritical: true },
+          tk,
+        )
+      ).statusCode,
+    ).toBe(200)
+    const d3 = (await upload(note(3, 'Obra ADM-2', 50), 'm3.xml', tk)).json().results[0]
+    docOutra = d3.documentId
+    await api('POST', `/api/documents/${d3.documentId}/approve`, { allocations: [{ projectId: outra, category: 'MATERIAIS', amount: 500_00 }], acknowledgeCritical: true }, tk)
+    // chegou e ainda não foi conferida: R$ 300
+    const d4 = (await upload(note(4, 'Obra ADM-1', 30), 'm4.xml', tk)).json().results[0]
+    expect(d4.document.status).not.toBe('APROVADO')
+    // pedido aprovado, entrega até o fim do mês: R$ 700
+    const [sup] = await db.select().from(suppliers).where(and(eq(suppliers.companyId, companyId), eq(suppliers.cnpj, supplierCnpj)))
+    await db.insert(purchaseOrders).values({ companyId, number: 1, projectId: obra, supplierId: sup.id, status: 'APROVADO', total: 700_00, expectedDate: new Date(`${today}T12:00:00-03:00`) })
+
+    const m = (await api('GET', `/api/projects/${obra}/measurement`, undefined, tk)).json()
+    const g = Object.fromEntries(m.realized.groups.map((x: any) => [x.key, x.amount]))
+    expect(g).toMatchObject({ materiais: 1_000_00, mao_de_obra: 1_000_00 })
+    expect(m.realized.total).toBe(2_000_00)
+    expect(m.realized.documents).toHaveLength(2)
+    expect(m.forecast.total).toBe(1_000_00)
+    expect(m.forecast.items.map((i: any) => i.kind).sort()).toEqual(['NOTA', 'PEDIDO'])
+    expect(m.fee).toMatchObject({ pct: 15, onRealized: 300_00, onForecast: 150_00, total: 450_00 })
+    expect(m.totals).toMatchObject({ realizedWithFee: 2_300_00, expectedCosts: 3_000_00, expected: 3_450_00, toSuppliers: 0, toBuilder: 3_450_00 })
+  })
+
+  it('proprietário paga as compras direto: à construtora vai só a taxa; taxa e fechamento próprios da obra', async () => {
+    await api('PATCH', `/api/projects/${obra}`, { ownerPaysSuppliers: true, adminFeeBps: 1200, measurementDay: 25 }, tk)
+    const m = (await api('GET', `/api/projects/${obra}/measurement?month=${today.slice(0, 7)}`, undefined, tk)).json()
+    expect(m.contract).toMatchObject({ adminFeeBps: 1200, adminFeeFromDefault: false, measurementDay: 25 })
+    expect(m.period.last).toBe(`${today.slice(0, 7)}-25`)
+    if (Number(today.slice(8)) <= 25) {
+      expect(m.fee.total).toBe(Math.round(3_000_00 * 0.12))
+      expect(m.totals.toSuppliers).toBe(3_000_00)
+      expect(m.totals.toBuilder).toBe(m.fee.total)
+    }
+    await api('PATCH', `/api/projects/${obra}`, { ownerPaysSuppliers: false, adminFeeBps: null, measurementDay: null }, tk)
+  })
+
+  it('padrões da construtora valem para as obras sem configuração própria', async () => {
+    expect((await inject('PUT', '/api/company/contract-defaults', { adminFeeBps: 1000, measurementDay: null })).statusCode).toBe(200)
+    const m = (await api('GET', `/api/projects/${obra}/measurement`, undefined, tk)).json()
+    expect(m.fee.pct).toBe(10)
+    await inject('PUT', '/api/company/contract-defaults', { adminFeeBps: 1500, measurementDay: null })
+  })
+
+  it('libera o portal: login do proprietário vê só a obra dele e nada do sistema', async () => {
+    const inv = await api('POST', `/api/projects/${obra}/owners`, { name: 'João Proprietário', email: ownerEmail }, tk)
+    expect(inv.statusCode).toBe(201)
+    expect(inv.json().password).toBeTruthy()
+    ownerId = inv.json().user.id
+    expect((await api('GET', `/api/projects/${obra}/owners`, undefined, tk)).json().map((o: any) => o.email)).toEqual([ownerEmail])
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: ownerEmail, password: inv.json().password }, remoteAddress: '10.6.0.1' })
+    ownerTk = login.json().token
+    const meRes = (await api('GET', '/api/auth/me', undefined, ownerTk)).json()
+    expect(meRes.user.role).toBe('PROPRIETARIO')
+    expect(meRes.permissions.projectIds).toEqual([obra])
+
+    const list = (await api('GET', '/api/owner/projects', undefined, ownerTk)).json()
+    expect(list.map((p: any) => p.id)).toEqual([obra])
+    expect(list[0]).toMatchObject({ costToDate: 2_000_00, contract: { type: 'ADMINISTRACAO' } })
+    const detail = (await api('GET', `/api/owner/projects/${obra}`, undefined, ownerTk)).json()
+    expect(detail.documents).toHaveLength(2)
+    expect(detail.measurement.totals.expected).toBe(3_450_00)
+    expect(detail.news.firstVisit).toBe(true)
+
+    // nada do sistema da construtora
+    for (const url of ['/api/documents', '/api/projects', '/api/dashboard', '/api/payables', '/api/users', '/api/company/contract-defaults', `/api/projects/${obra}/measurement`]) {
+      const r = await api('GET', url, undefined, ownerTk)
+      expect(r.statusCode, url).toBe(403)
+      expect(r.json().code).toBe('SO_PORTAL')
+    }
+    expect((await api('GET', `/api/owner/projects/${outra}`, undefined, ownerTk)).statusCode).toBe(404)
+    // arquivo: nota da obra dele sim, da outra obra não
+    expect((await api('GET', `/api/owner/documents/${docMaterial}/file`, undefined, ownerTk)).statusCode).toBe(200)
+    expect((await api('GET', `/api/owner/documents/${docOutra}/file`, undefined, ownerTk)).statusCode).toBe(404)
+    // quem não é proprietário não usa o portal
+    expect((await api('GET', '/api/owner/projects', undefined, tk)).json().code).toBe('SO_PROPRIETARIO')
+  })
+
+  it('novidades: notas aprovadas depois da última visita', async () => {
+    await api('POST', '/api/owner/seen', {}, ownerTk)
+    const d = (await upload(note(5, 'Obra ADM-1', 10), 'm5.xml', tk)).json().results[0]
+    await api('POST', `/api/documents/${d.documentId}/approve`, { allocations: [{ projectId: obra, category: 'MATERIAIS', amount: 100_00 }], acknowledgeCritical: true }, tk)
+    const detail = (await api('GET', `/api/owner/projects/${obra}`, undefined, ownerTk)).json()
+    expect(detail.news).toMatchObject({ documents: 1, firstVisit: false })
+    expect(detail.documents.find((x: any) => x.id === d.documentId).isNew).toBe(true)
+  })
+
+  it('administrador confere o portal "vendo como" o proprietário (só leitura)', async () => {
+    const v = await api('POST', `/api/users/${ownerId}/view-as`, {}, tk)
+    expect(v.statusCode).toBe(200)
+    const viewTk = v.json().token
+    expect((await api('GET', '/api/owner/projects', undefined, viewTk)).json().map((p: any) => p.id)).toEqual([obra])
+    expect((await api('GET', '/api/documents', undefined, viewTk)).statusCode).toBe(403)
+    expect((await api('POST', '/api/owner/seen', {}, viewTk)).statusCode).toBe(403)
+  })
+
+  it('tirar a obra desativa o acesso do proprietário', async () => {
+    expect((await inject('DELETE', `/api/projects/${obra}/owners/${ownerId}`)).json()).toMatchObject({ ok: true, active: false })
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: ownerEmail, password: 'x'.repeat(10) }, remoteAddress: '10.6.0.2' })
+    expect(login.statusCode).not.toBe(200)
+    expect((await api('GET', '/api/owner/projects', undefined, ownerTk)).statusCode).not.toBe(200)
   })
 })
 

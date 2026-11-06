@@ -23,6 +23,10 @@ const router = createRouter({
     { path: '/inteligencia', name: 'alerts', component: () => import('./views/AlertsView.vue'), meta: { title: 'Inteligência' } },
     { path: '/configuracoes', name: 'settings', component: () => import('./views/SettingsView.vue'), meta: { title: 'Configurações' } },
     { path: '/integracoes', name: 'integrations', component: () => import('./views/IntegrationsView.vue'), meta: { title: 'Integrações' } },
+    { path: '/proprietario', name: 'owner-home', component: () => import('./views/OwnerHomeView.vue'), meta: { title: 'Minhas obras', portal: true } },
+    { path: '/proprietario/:id', name: 'owner-project', component: () => import('./views/OwnerProjectView.vue'), meta: { title: 'Minha obra', portal: true } },
+    // medição para imprimir ou salvar em PDF (construtora e proprietário)
+    { path: '/medicao/:id', name: 'measurement-print', component: () => import('./views/MeasurementPrintView.vue'), meta: { title: 'Medição', print: true, anyRole: true } },
     { path: '/plataforma', name: 'platform', component: () => import('./views/PlatformView.vue'), meta: { title: 'Plataforma', owner: true } },
     { path: '/plataforma/acerto', name: 'platform-accuracy', component: () => import('./views/AccuracyView.vue'), meta: { title: 'Acerto das sugestões', owner: true } },
     { path: '/plataforma/margem', name: 'platform-margin', component: () => import('./views/MarginView.vue'), meta: { title: 'Margem por cliente', owner: true } },
@@ -41,6 +45,9 @@ router.beforeEach(async (to) => {
     auth.logout()
     return { name: 'login' }
   }
+  // proprietário (dono da obra): só o portal e a medição para imprimir
+  if (auth.isProprietario) return to.meta.portal || to.meta.anyRole ? true : { name: 'owner-home' }
+  if (to.meta.portal) return DEMO ? true : firstAllowed()
   if (to.meta.owner && (!auth.isPlatformOwner || auth.impersonating)) return { name: 'dashboard' }
   // admin-only: integrações e configurações
   if ((to.path.startsWith('/integracoes') || to.path.startsWith('/configuracoes')) && !auth.isAdmin) return firstAllowed()

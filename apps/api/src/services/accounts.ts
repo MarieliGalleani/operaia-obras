@@ -8,7 +8,7 @@ import { formatCnpj, isValidCnpj, normalizeCnpj } from '../domain/cnpj.js'
 import { audit } from './audit.js'
 import { badRequest, conflict } from './errors.js'
 
-export type Role = 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'
+export type Role = 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE' | 'PROPRIETARIO'
 
 /** Senha provisória legível (sem caracteres ambíguos), para enviar por canal seguro. */
 export function temporaryPassword() {

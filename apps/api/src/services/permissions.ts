@@ -12,7 +12,7 @@ export const SCREENS = ['dashboard', 'obras', 'app_obra', 'orcamentos', 'compras
 export const ACTIONS = ['aprovar_notas', 'pagamentos', 'aprovar_pedidos', 'editar_obras', 'homologar_fornecedores'] as const
 export type Screen = (typeof SCREENS)[number]
 export type Action = (typeof ACTIONS)[number]
-export type Role = 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'
+export type Role = 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE' | 'PROPRIETARIO'
 
 export interface StoredPerms {
   screens?: Screen[]
@@ -35,11 +35,15 @@ export const ROLE_DEFAULTS: Record<Role, { screens: Screen[]; actions: Action[] 
   FINANCEIRO: { screens: OFFICE, actions: ['aprovar_notas', 'pagamentos', 'homologar_fornecedores'] },
   GESTOR_OBRA: { screens: OFFICE, actions: ['aprovar_pedidos', 'editar_obras'] },
   MESTRE: { screens: ['app_obra'], actions: [] },
+  // proprietário (dono da obra): só o portal, só das obras liberadas para ele (ver ownerApiAllowed)
+  PROPRIETARIO: { screens: [], actions: [] },
 }
 
 export function effectivePerms(role: Role, stored: StoredPerms | null | undefined): Perms {
   if (role === 'ADMIN') return { ...ROLE_DEFAULTS.ADMIN, projectIds: null, custom: false, admin: true }
   const def = ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS.MESTRE
+  // proprietário nunca vê "todas as obras": sem obra liberada, não vê nenhuma
+  if (role === 'PROPRIETARIO') return { screens: [], actions: [], projectIds: stored?.projectIds ?? [], custom: false, admin: false }
   if (!stored) return { screens: [...def.screens], actions: [...def.actions], projectIds: null, custom: false, admin: false }
   return {
     screens: (stored.screens ?? def.screens).filter((s) => SCREENS.includes(s)),
@@ -81,6 +85,15 @@ export function apiAllowed(url: string, perms: Perms): boolean | null {
   const hit = API_SCREENS.find(([prefix]) => path.startsWith(prefix))
   if (!hit) return null
   return hit[1].some((s) => perms.screens.includes(s))
+}
+
+/**
+ * Proprietário só chama o portal (/api/owner), login e troca de senha. Qualquer outra rota da API
+ * é bloqueada aqui, inclusive as que não pertencem a nenhuma tela.
+ */
+export function ownerApiAllowed(url: string): boolean {
+  const path = url.split('?')[0]
+  return path.startsWith('/api/owner/') || path === '/api/auth/me' || path === '/api/auth/password' || path === '/api/auth/logout'
 }
 
 export const canProject = (perms: Perms, projectId: string) => !perms.projectIds || perms.projectIds.includes(projectId)

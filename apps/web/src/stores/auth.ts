@@ -40,7 +40,7 @@ const writeMe = (me: Me | null) => {
 }
 
 interface Me {
-  user: { id: string; name: string; email: string; role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'; isPlatformOwner?: boolean }
+  user: { id: string; name: string; email: string; role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE' | 'PROPRIETARIO'; isPlatformOwner?: boolean }
   company: { id: string; name: string; cnpj: string; status?: string }
   impersonating?: boolean
   permissions?: Perms
@@ -78,6 +78,8 @@ export const useAuth = defineStore('auth', {
     viewingAs: (s) => !!s.me?.viewAs,
     isPlatformOwner: (s) => !!s.me?.user.isPlatformOwner,
     isMestre: (s) => s.me?.user.role === 'MESTRE',
+    /** dono da obra: só vê o portal do proprietário */
+    isProprietario: (s) => s.me?.user.role === 'PROPRIETARIO',
     impersonating: (s) => !!s.me?.impersonating,
   },
   actions: {

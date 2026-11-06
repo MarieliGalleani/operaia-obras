@@ -16,7 +16,7 @@ interface User {
   id: string
   name: string
   email: string
-  role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'
+  role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE' | 'PROPRIETARIO'
   active: boolean
   lastLoginAt: string | null
   createdAt: string
@@ -37,7 +37,10 @@ const created = ref<{ email: string; password: string } | null>(null)
 
 async function loadTeam() {
   try {
-    team.value = await api.get<User[]>('/api/users')
+    const all = await api.get<User[]>('/api/users')
+    // proprietários (portal) são liberados na aba "Proprietário e medição" de cada obra
+    owners.value = all.filter((u) => u.role === 'PROPRIETARIO').length
+    team.value = all.filter((u) => u.role !== 'PROPRIETARIO')
   } catch (e) {
     toastError(e)
   }
@@ -66,7 +69,35 @@ async function sendInvite() {
   }
 }
 
-onMounted(loadTeam)
+// ---- padrões das obras por administração
+const owners = ref(0)
+const defForm = ref({ fee: '15', day: null as number | null })
+const defSaving = ref(false)
+const CLOSE_DAYS = [{ title: 'Último dia do mês', value: null as number | null }, ...Array.from({ length: 28 }, (_, i) => ({ title: `Todo dia ${i + 1}`, value: (i + 1) as number | null }))]
+async function loadDefaults() {
+  try {
+    const d = await api.get<{ adminFeeBps: number; measurementDay: number | null }>('/api/company/contract-defaults')
+    defForm.value = { fee: (d.adminFeeBps / 100).toLocaleString('pt-BR'), day: d.measurementDay }
+  } catch {
+    /* demonstração */
+  }
+}
+async function saveDefaults() {
+  defSaving.value = true
+  try {
+    await api.put('/api/company/contract-defaults', { adminFeeBps: Math.round(Number(defForm.value.fee.replace(',', '.')) * 100), measurementDay: defForm.value.day })
+    toast('Padrões salvos')
+  } catch (e) {
+    toastError(e)
+  } finally {
+    defSaving.value = false
+  }
+}
+
+onMounted(() => {
+  loadTeam()
+  loadDefaults()
+})
 
 // ------------------------------------------------------------ liberações
 const permOpen = ref(false)
@@ -158,6 +189,17 @@ async function copy(text: string) {
     <div class="page-title">Configurações</div>
     <div class="page-subtitle">Equipe com acesso ao sistema da construtora.</div>
   </div>
+
+  <v-card class="pa-5 mb-4">
+    <div class="card-title mb-1">Obras por administração</div>
+    <div class="text-body-2 muted mb-4">Padrões para a prévia da medição e o portal do proprietário. Cada obra pode ter os seus na aba "Proprietário e medição".</div>
+    <div class="d-flex flex-wrap ga-4 align-center">
+      <v-text-field id="default-fee" v-model="defForm.fee" label="Taxa de administração (%)" hint="Sobre material e mão de obra" persistent-hint style="max-width: 240px" />
+      <v-select id="default-day" v-model="defForm.day" :items="CLOSE_DAYS" label="Fechamento da medição" style="max-width: 240px" hide-details />
+      <v-btn color="primary" variant="tonal" :loading="defSaving" @click="saveDefaults">Salvar padrões</v-btn>
+    </div>
+    <div v-if="owners" class="text-caption muted mt-3">{{ owners }} proprietário(s) com acesso ao portal. O acesso é liberado e retirado na página de cada obra.</div>
+  </v-card>
 
   <v-card class="pa-5 mb-4">
     <div class="d-flex align-center justify-space-between mb-3">

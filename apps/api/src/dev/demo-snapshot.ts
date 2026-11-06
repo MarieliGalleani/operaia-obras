@@ -60,6 +60,33 @@ await grab('/api/alerts?status=ABERTO')
 await grab('/api/alerts?status=RESOLVIDO,IGNORADO')
 await grab('/api/mail-inbox')
 await grab('/api/users')
+await grab('/api/company/contract-defaults')
+// prévia da medição de cada obra (mês atual e anteriores) e o portal do proprietário
+const ymOf = (offset: number) => {
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
+}
+const months = [-5, -4, -3, -2, -1, 0, 1].map(ymOf)
+for (const p of projects) {
+  await grab(`/api/projects/${p.id}/measurement`)
+  await grab(`/api/projects/${p.id}/owners`)
+  for (const m of months) await grab(`/api/projects/${p.id}/measurement?month=${m}`)
+}
+{
+  const ownerLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'proprietario@alpha.com.br', password: 'operaia123' } })
+  const ownerToken = ownerLogin.json().token as string
+  const ownerGrab = async (url: string) => {
+    const res = await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${ownerToken}` } })
+    if (res.statusCode !== 200) throw new Error(`${url} → ${res.statusCode}`)
+    data[url] = res.json()
+    return res.json()
+  }
+  const mine = (await ownerGrab('/api/owner/projects')) as { id: string }[]
+  for (const p of mine) {
+    await ownerGrab(`/api/owner/projects/${p.id}`)
+    for (const m of months) await ownerGrab(`/api/owner/projects/${p.id}/measurement?month=${m}`)
+  }
+}
 data['/api/integrations'] = { apiKey: 'oo_demo_chave_ficticia_0000', nfeEndpoint: '/api/integrations/nfe' }
 
 const out = new URL('../../../web/demo/', import.meta.url)

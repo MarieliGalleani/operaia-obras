@@ -1,7 +1,7 @@
 /** Telas e ações que o administrador libera pessoa a pessoa (espelho de apps/api/src/services/permissions.ts). */
 export type Screen = 'dashboard' | 'obras' | 'app_obra' | 'orcamentos' | 'compras' | 'fornecedores' | 'notas' | 'pagar' | 'relatorios' | 'inteligencia'
 export type Action = 'aprovar_notas' | 'pagamentos' | 'aprovar_pedidos' | 'editar_obras' | 'homologar_fornecedores'
-export type Role = 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'
+export type Role = 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE' | 'PROPRIETARIO'
 
 export interface Perms {
   screens: Screen[]
@@ -38,6 +38,8 @@ export const ROLE_DEFAULTS: Record<Role, { screens: Screen[]; actions: Action[] 
   FINANCEIRO: { screens: OFFICE, actions: ['aprovar_notas', 'pagamentos', 'homologar_fornecedores'] },
   GESTOR_OBRA: { screens: OFFICE, actions: ['aprovar_pedidos', 'editar_obras'] },
   MESTRE: { screens: ['app_obra'], actions: [] },
+  // dono da obra: só o portal (/proprietario)
+  PROPRIETARIO: { screens: [], actions: [] },
 }
 
 /** Rota → tela (rotas fora daqui não dependem de liberação de tela). */

@@ -21,7 +21,9 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
-export const userRole = pgEnum('user_role', ['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE'])
+export const userRole = pgEnum('user_role', ['ADMIN', 'FINANCEIRO', 'GESTOR_OBRA', 'MESTRE', 'PROPRIETARIO'])
+/** Empreitada: preço fechado. Administração: o proprietário paga o custo da obra + a taxa de administração da construtora. */
+export const contractType = pgEnum('contract_type', ['EMPREITADA', 'ADMINISTRACAO'])
 export const projectStatus = pgEnum('project_status', ['ATIVA', 'PAUSADA', 'CONCLUIDA'])
 export const costCategory = pgEnum('cost_category', [
   'MATERIAIS',
@@ -91,6 +93,9 @@ export const companies = pgTable('companies', {
   monthlyFee: money('monthly_fee'),
   setupFee: money('setup_fee'),
   billingSince: text('billing_since'),
+  /** Padrões das obras por administração (cada obra pode ter os seus): taxa em centésimos de ponto (1500 = 15%) e dia do fechamento da medição (null = último dia do mês) */
+  defaultAdminFeeBps: integer('default_admin_fee_bps').notNull().default(1500),
+  defaultMeasurementDay: integer('default_measurement_day'),
   createdAt: createdAt(),
 })
 
@@ -111,6 +116,8 @@ export const users = pgTable(
     /** Dona(o) da plataforma OperaIA: vê e administra todas as construtoras */
     isPlatformOwner: boolean('is_platform_owner').notNull().default(false),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    /** portal do proprietário: até quando ele já viu as novidades */
+    ownerSeenAt: timestamp('owner_seen_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('users_company_idx').on(t.companyId)],
@@ -131,6 +138,16 @@ export const projects = pgTable(
     endDate: timestamp('end_date', { withTimezone: true }),
     budgetTotal: money('budget_total').notNull(),
     imageUrl: text('image_url'),
+    /** Contrato com o proprietário (portal do proprietário e prévia da medição) */
+    contractType: contractType('contract_type').notNull().default('EMPREITADA'),
+    /** null = padrão da construtora */
+    adminFeeBps: integer('admin_fee_bps'),
+    /** 1–28; null = padrão da construtora (que pode ser o último dia do mês) */
+    measurementDay: integer('measurement_day'),
+    /** o proprietário paga as compras direto aos fornecedores (a construtora recebe só a taxa) */
+    ownerPaysSuppliers: boolean('owner_pays_suppliers').notNull().default(false),
+    ownerName: text('owner_name'),
+    ownerEmail: text('owner_email'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('projects_company_code_uq').on(t.companyId, t.code)],

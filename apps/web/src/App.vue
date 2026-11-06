@@ -29,7 +29,7 @@ const visibleNav = computed(() => {
     ? [{ title: 'Plataforma', icon: 'mdi-shield-crown-outline', to: '/plataforma' }, ...items]
     : items
 })
-const ROLE_TITLE: Record<string, string> = { ADMIN: 'Administrador', FINANCEIRO: 'Financeiro', GESTOR_OBRA: 'Gestor de obra', MESTRE: 'Mestre de obra' }
+const ROLE_TITLE: Record<string, string> = { ADMIN: 'Administrador', FINANCEIRO: 'Financeiro', GESTOR_OBRA: 'Gestor de obra', MESTRE: 'Mestre de obra', PROPRIETARIO: 'Proprietário' }
 const exiting = ref(false)
 async function exitViewAs() {
   exiting.value = true
@@ -56,6 +56,11 @@ async function backToPlatform() {
   }
 }
 const isPublic = computed(() => !!route.meta.public)
+/** medição para imprimir: sem menu */
+const isPrint = computed(() => !!route.meta.print)
+/** dono da obra: portal sem o menu da construtora */
+// (na demonstração o administrador também abre o portal, para mostrar o que o proprietário vê)
+const isPortal = computed(() => auth.isProprietario || (DEMO && !!route.meta.portal))
 
 function doSearch() {
   if (search.value.trim()) router.push({ name: 'documents', query: { q: search.value.trim(), tab: 'todas' } })
@@ -85,8 +90,51 @@ function logout() {
 
 <template>
   <v-app>
-    <template v-if="isPublic">
+    <template v-if="isPublic || isPrint">
       <router-view />
+    </template>
+    <template v-else-if="isPortal">
+      <v-app-bar flat height="64" color="surface" class="appbar">
+        <div class="d-flex align-center ml-4 ga-3" style="min-width: 0">
+          <router-link to="/proprietario" class="d-flex align-center" style="text-decoration: none; color: inherit" aria-label="Minhas obras"><AppLogo /></router-link>
+          <v-divider vertical class="my-4" />
+          <div style="min-width: 0">
+            <div class="text-caption muted" style="line-height: 1.1">Portal do proprietário</div>
+            <div class="font-weight-bold text-truncate" style="line-height: 1.2">{{ auth.me?.company.name }}</div>
+          </div>
+        </div>
+        <v-spacer />
+        <v-menu>
+          <template #activator="{ props }">
+            <v-btn v-bind="props" variant="text" class="mr-2 px-2" aria-label="Minha conta">
+              <v-avatar color="primary" size="34" class="text-caption font-weight-bold">{{ auth.initials }}</v-avatar>
+              <v-icon size="18" class="ml-1">mdi-chevron-down</v-icon>
+            </v-btn>
+          </template>
+          <v-list density="compact" min-width="220">
+            <v-list-item :title="auth.me?.user.name" :subtitle="auth.me?.user.email" />
+            <v-divider />
+            <v-list-item v-if="!DEMO" prepend-icon="mdi-lock-reset" title="Trocar senha" @click="pwDialog = true" />
+            <v-list-item v-if="!DEMO" prepend-icon="mdi-logout" title="Sair" @click="logout" />
+          </v-list>
+        </v-menu>
+      </v-app-bar>
+      <v-main>
+        <div v-if="auth.viewingAs" class="support-bar view-as-bar">
+          <v-icon size="18" class="mr-2">mdi-eye-outline</v-icon>
+          <span>Você está vendo o portal como <strong>{{ auth.me?.user.name }}</strong> (proprietário), só leitura.</span>
+          <v-spacer />
+          <v-btn size="small" variant="flat" color="white" class="text-secondary" :loading="exiting" prepend-icon="mdi-arrow-left" @click="exitViewAs">Voltar ao meu acesso</v-btn>
+        </div>
+        <div v-if="DEMO" class="demo-bar">
+          <v-icon size="16" class="mr-1">mdi-eye-outline</v-icon>
+          Demonstração: o que o proprietário de uma obra por administração vê. Dados fictícios.
+          <router-link to="/obras" class="ml-2" style="color: inherit">Voltar à construtora</router-link>
+        </div>
+        <div class="page-wrap portal-wrap">
+          <router-view />
+        </div>
+      </v-main>
     </template>
     <template v-else>
       <v-navigation-drawer v-model="drawer" color="secondary" width="232" :permanent="mdAndUp" class="sidebar">

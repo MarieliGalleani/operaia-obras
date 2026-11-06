@@ -16,7 +16,7 @@ export interface AuthUser {
   sub: string
   /** Construtora em que a pessoa está operando (na visão "entrar como", é a construtora visitada) */
   companyId: string
-  role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE'
+  role: 'ADMIN' | 'FINANCEIRO' | 'GESTOR_OBRA' | 'MESTRE' | 'PROPRIETARIO'
   name: string
   /** Dona da plataforma OperaIA */
   platform?: boolean

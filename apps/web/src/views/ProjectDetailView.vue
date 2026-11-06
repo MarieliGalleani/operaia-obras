@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AlertItem from '@/components/AlertItem.vue'
 import DocumentReview from '@/components/DocumentReview.vue'
 import KpiCard from '@/components/KpiCard.vue'
+import ProjectOwnerTab from '@/components/ProjectOwnerTab.vue'
 import ProjectThumb from '@/components/ProjectThumb.vue'
 import StackBar from '@/components/StackBar.vue'
 import { api } from '@/lib/api'
@@ -38,7 +39,7 @@ const route = useRoute()
 const router = useRouter()
 const data = ref<Detail | null>(null)
 const field = ref<Field | null>(null)
-const tab = ref('custos')
+const tab = ref((route.query.aba as string) || 'custos')
 const openDoc = ref<string | null>(null)
 
 async function load() {
@@ -212,6 +213,7 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
         <v-tab value="notas" class="text-none">Notas ({{ data.documents.length }})</v-tab>
         <v-tab value="titulos" class="text-none">Títulos ({{ data.payables.length }})</v-tab>
         <v-tab value="diario" class="text-none">Diário da obra</v-tab>
+        <v-tab value="proprietario" class="text-none">Proprietário e medição</v-tab>
       </v-tabs>
       <v-divider />
       <div v-if="tab === 'custos'" class="pa-5">
@@ -283,7 +285,7 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
           </v-col>
         </v-row>
       </div>
-      <v-table v-else density="comfortable">
+      <v-table v-else-if="tab === 'titulos'" density="comfortable">
         <thead><tr><th>Vencimento</th><th>Fornecedor</th><th>NF · parcela</th><th class="text-right">Valor do título</th><th>Status</th></tr></thead>
         <tbody>
           <tr v-for="p in data.payables" :key="p.id">
@@ -295,6 +297,7 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
           </tr>
         </tbody>
       </v-table>
+      <ProjectOwnerTab v-if="tab === 'proprietario'" :project-id="data.id" :can-edit="canEdit" />
       <div v-if="tab === 'notas' || tab === 'titulos'" class="text-caption muted pa-4">Valores das notas e títulos são totais; se a nota foi rateada, só parte dela pertence a esta obra.</div>
     </v-card>
 

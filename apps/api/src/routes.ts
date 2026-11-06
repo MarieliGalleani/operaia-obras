@@ -19,6 +19,7 @@ import {
 } from './db/schema.js'
 import { isValidCnpj, normalizeCnpj } from './domain/cnpj.js'
 import { changePassword, createUser } from './services/accounts.js'
+import { registerOwnerRoutes } from './owner.js'
 import { registerPlatformRoutes } from './platform.js'
 import { audit } from './services/audit.js'
 import { exportAccountantZip, exportAllocations, exportPayables } from './services/exports.js'
@@ -57,7 +58,7 @@ import {
   updateDocumentDraft,
 } from './services/documents.js'
 import { AppError, badRequest, notFound } from './services/errors.js'
-import { ACTIONS, ROLE_DEFAULTS, SCREENS, apiAllowed, canProject, effectivePerms, type Action } from './services/permissions.js'
+import { ACTIONS, ROLE_DEFAULTS, SCREENS, apiAllowed, canProject, effectivePerms, ownerApiAllowed, type Action } from './services/permissions.js'
 import { computeProjectFinancials } from './services/financials.js'
 import { contentTypeOf, storage } from './services/storage.js'
 import { alertInScope, assertDocument, assertPayable, assertProjectRow } from './services/scope.js'
@@ -187,6 +188,12 @@ export async function registerRoutes(app: FastifyInstance) {
       if (u.readOnly && req.method !== 'GET') {
         return reply.code(403).send({ code: 'SO_LEITURA', message: `Você está vendo o sistema como ${u.name}: só leitura. Volte ao seu acesso para alterar.` })
       }
+      if (u.role === 'PROPRIETARIO' && !ownerApiAllowed(req.url)) {
+        return reply.code(403).send({ code: 'SO_PORTAL', message: 'Seu acesso é o portal do proprietário.' })
+      }
+      if (u.role !== 'PROPRIETARIO' && req.url.startsWith('/api/owner/')) {
+        return reply.code(403).send({ code: 'SO_PROPRIETARIO', message: 'Área do proprietário da obra.' })
+      }
       if (apiAllowed(req.url, req.perms) === false) {
         return reply.code(403).send({ code: 'SEM_PERMISSAO', message: 'Esta tela não foi liberada para você. Fale com o administrador.' })
       }
@@ -225,6 +232,7 @@ export async function registerRoutes(app: FastifyInstance) {
       else if (path.startsWith('/api/alerts/')) await assertProjectRow('alerts', id, scope, 'Alerta')
     })
     await r.register(async (p) => registerPlatformRoutes(p))
+    await r.register(async (p) => registerOwnerRoutes(p))
 
     r.get('/api/auth/me', async (req) => {
       const u = me(req)
@@ -283,6 +291,13 @@ export async function registerRoutes(app: FastifyInstance) {
         .optional()
         .nullable(),
       budgets: z.array(z.object({ category, amount: cents.nonnegative() })).optional(),
+      // contrato com o proprietário (portal e prévia da medição)
+      contractType: z.enum(['EMPREITADA', 'ADMINISTRACAO']).optional(),
+      adminFeeBps: z.number().int().min(0).max(10_000).nullable().optional(),
+      measurementDay: z.number().int().min(1).max(28).nullable().optional(),
+      ownerPaysSuppliers: z.boolean().optional(),
+      ownerName: z.string().max(120).nullable().optional(),
+      ownerEmail: z.string().email().nullable().optional().or(z.literal('').transform(() => null)),
     })
 
     r.post('/api/projects', async (req, reply) => {
@@ -351,6 +366,12 @@ export async function registerRoutes(app: FastifyInstance) {
             ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
             ...(body.startDate !== undefined && { startDate: body.startDate ? new Date(body.startDate) : null }),
             ...(body.endDate !== undefined && { endDate: body.endDate ? new Date(body.endDate) : null }),
+            ...(body.contractType && { contractType: body.contractType }),
+            ...(body.adminFeeBps !== undefined && { adminFeeBps: body.adminFeeBps }),
+            ...(body.measurementDay !== undefined && { measurementDay: body.measurementDay }),
+            ...(body.ownerPaysSuppliers !== undefined && { ownerPaysSuppliers: body.ownerPaysSuppliers }),
+            ...(body.ownerName !== undefined && { ownerName: body.ownerName }),
+            ...(body.ownerEmail !== undefined && { ownerEmail: body.ownerEmail }),
           })
           .where(and(eq(projects.companyId, u.companyId), eq(projects.id, id)))
           .returning()
