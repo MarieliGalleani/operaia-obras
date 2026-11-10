@@ -1,0 +1,98 @@
+<script setup lang="ts">
+/**
+ * Comparação de tamanho (quanto foi para cada coisa), do maior para o menor.
+ * Uma só cor: a barra mais comprida é a maior. O nome e o valor estão escritos em cada linha,
+ * então a pessoa não precisa decorar legenda nem relacionar cores.
+ */
+import { computed } from 'vue'
+import { brl } from '@/lib/format'
+
+const props = defineProps<{
+  items: { key: string; label: string; amount: number }[]
+  /** rótulo do total, escrito embaixo */
+  totalLabel?: string
+  emptyText?: string
+}>()
+
+const SHADES = ['var(--oo-data-1)', 'var(--oo-data-2)', 'var(--oo-data-3)', 'var(--oo-data-4)', 'var(--oo-data-5)']
+const rows = computed(() => {
+  const list = props.items.filter((i) => i.amount > 0).sort((a, b) => b.amount - a.amount)
+  const max = list.length ? list[0].amount : 1
+  const total = list.reduce((a, b) => a + b.amount, 0)
+  return list.map((i, idx) => ({
+    ...i,
+    width: Math.max((i.amount / max) * 100, 2),
+    share: total ? Math.round((i.amount / total) * 100) : 0,
+    color: SHADES[Math.min(idx, SHADES.length - 1)],
+  }))
+})
+const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
+</script>
+
+<template>
+  <div>
+    <div v-for="r in rows" :key="r.key" class="bar-row">
+      <div class="bar-head">
+        <span class="bar-name">{{ r.label }}</span>
+        <span class="money bar-amount">{{ brl(r.amount) }}</span>
+      </div>
+      <div class="bar-track">
+        <span class="bar-fill" :style="{ width: r.width + '%', background: r.color }" />
+      </div>
+      <div v-if="rows.length > 1" class="bar-foot muted">{{ r.share }} de cada 100 reais gastos</div>
+    </div>
+    <div v-if="!rows.length" class="muted py-4">{{ emptyText ?? 'Nada lançado neste período.' }}</div>
+    <div v-else class="bar-total">
+      <span>{{ totalLabel ?? 'Total' }}</span>
+      <span class="money font-weight-bold">{{ brl(total) }}</span>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.bar-row {
+  padding: 10px 0;
+}
+.bar-row + .bar-row {
+  border-top: 1px solid var(--oo-border);
+}
+.bar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 7px;
+}
+.bar-name {
+  font-size: var(--oo-fs-lead);
+  font-weight: 600;
+}
+.bar-amount {
+  font-size: var(--oo-fs-lead);
+  font-weight: 700;
+}
+.bar-track {
+  height: 14px;
+  border-radius: 4px;
+  background: #f1f4f2;
+  overflow: hidden;
+}
+.bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+}
+.bar-foot {
+  font-size: var(--oo-fs-micro);
+  margin-top: 5px;
+}
+.bar-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 2px solid var(--oo-text);
+  font-size: var(--oo-fs-lead);
+}
+</style>

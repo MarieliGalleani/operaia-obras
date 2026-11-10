@@ -9,7 +9,7 @@ const router = createRouter({
   history: DEMO ? createMemoryHistory() : createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
-    { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue'), meta: { title: 'Visão Geral' } },
+    { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue'), meta: { title: 'Início' } },
     { path: '/obras', name: 'projects', component: () => import('./views/ProjectsView.vue'), meta: { title: 'Obras' } },
     { path: '/obras/:id', name: 'project', component: () => import('./views/ProjectDetailView.vue'), meta: { title: 'Obra' } },
     { path: '/orcamentos', name: 'budgets', component: () => import('./views/BudgetsView.vue'), meta: { title: 'Orçamentos' } },

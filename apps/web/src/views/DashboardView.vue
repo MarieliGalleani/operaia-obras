@@ -2,14 +2,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AlertItem from '@/components/AlertItem.vue'
-import DonutChart from '@/components/DonutChart.vue'
+import BarList from '@/components/BarList.vue'
 import KpiCard from '@/components/KpiCard.vue'
 import PayableChip from '@/components/PayableChip.vue'
 import PeriodPicker from '@/components/PeriodPicker.vue'
 import ProjectThumb from '@/components/ProjectThumb.vue'
 import StackBar from '@/components/StackBar.vue'
 import { api } from '@/lib/api'
-import { brl, date, pct } from '@/lib/format'
+import { brl, categoryLabel, date, pct } from '@/lib/format'
 import { currentMonth } from '@/lib/period'
 import { toast, toastError } from '@/lib/toast'
 
@@ -53,16 +53,19 @@ watch(period, load)
 
 const change = computed(() => {
   const c = data.value?.kpis.appropriatedCostChangePct
-  if (c == null) return { text: 'sem base de comparação', color: undefined }
-  return { text: `${c >= 0 ? '↑' : '↓'} ${pct(Math.abs(c))} vs período anterior`, color: c > 0 ? 'error' : 'success' }
+  if (c == null) return { text: 'sem período anterior para comparar', color: undefined }
+  const dir = c >= 0 ? 'mais' : 'menos'
+  return { text: `${pct(Math.abs(c))} ${dir} que no período anterior`, color: undefined }
 })
+const costItems = computed(() => (data.value?.costsByCategory ?? []).map((c) => ({ key: c.category, label: categoryLabel(c.category), amount: c.total })))
+const lateCount = computed(() => (data.value?.upcomingPayables ?? []).filter((t) => new Date(t.dueDate) < new Date()).length)
 
 const exporting = ref(false)
 async function exportPeriod() {
   exporting.value = true
   try {
     await api.download(`/api/exports/lancamentos.csv?from=${period.value.from}&to=${period.value.to}`, 'lancamentos.csv')
-    toast('Planilha de lançamentos gerada')
+    toast('Planilha baixada')
   } catch (e) {
     toastError(e)
   } finally {
@@ -80,151 +83,120 @@ function openAlert(a: Dashboard['alerts'][number]) {
 <template>
   <div class="d-flex align-start justify-space-between flex-wrap ga-4 mb-6">
     <div>
-      <div class="page-title">Visão Geral</div>
-      <div class="page-subtitle">Acompanhe custos, compromissos e alertas das suas obras.</div>
+      <div class="page-title">Suas obras hoje</div>
+      <div class="page-subtitle">Quanto cada obra já gastou, o que vence agora e o que precisa da sua decisão.</div>
     </div>
     <div class="d-flex ga-2 align-center flex-wrap">
-      <v-btn variant="outlined" prepend-icon="mdi-file-delimited-outline" :loading="exporting" @click="exportPeriod">Exportar lançamentos</v-btn>
       <PeriodPicker v-model="period" />
+      <v-btn variant="outlined" prepend-icon="mdi-table-arrow-down" :loading="exporting" @click="exportPeriod">Baixar planilha</v-btn>
     </div>
   </div>
 
   <v-skeleton-loader v-if="loading && !data" type="card, card" />
 
   <template v-if="data">
-    <v-alert
-      v-if="data.kpis.documentsPending"
-      type="info"
-      variant="tonal"
-      density="compact"
-      class="mb-4"
-      icon="mdi-inbox-arrow-down-outline"
-    >
-      <span>
-        <strong>{{ data.kpis.documentsPending }}</strong> nota(s) aguardando conferência.
-        <router-link class="link ml-1" :to="{ name: 'documents' }">Revisar agora →</router-link>
-      </span>
-    </v-alert>
+    <!-- o que precisa da pessoa agora, antes de qualquer número -->
+    <div v-if="data.kpis.documentsPending || lateCount" class="todo mb-5">
+      <div class="todo-title"><v-icon color="#b26a00" class="mr-2">mdi-hand-pointing-right</v-icon>Para você resolver agora</div>
+      <div class="todo-list">
+        <div v-if="data.kpis.documentsPending" class="todo-item">
+          <div>
+            <div class="font-weight-bold" style="font-size: var(--oo-fs-lead)">{{ data.kpis.documentsPending }} nota(s) esperando você conferir</div>
+            <div class="muted">Enquanto não confere, elas não entram no custo da obra.</div>
+          </div>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-file-check-outline" :to="{ name: 'documents' }">Conferir notas</v-btn>
+        </div>
+        <div v-if="lateCount" class="todo-item">
+          <div>
+            <div class="font-weight-bold" style="font-size: var(--oo-fs-lead)">{{ lateCount }} conta(s) já passaram do vencimento</div>
+            <div class="muted">Pague ou negocie para não pagar juros.</div>
+          </div>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-cash-clock" to="/contas-a-pagar">Ver contas</v-btn>
+        </div>
+      </div>
+    </div>
 
     <v-row dense class="mb-2">
-      <v-col cols="12" sm="6" lg>
-        <KpiCard label="Custo apropriado" :value="brl(data.kpis.appropriatedCost, { compact: true })" :hint="change.text" :hint-color="change.color" />
+      <v-col cols="12" md="6" lg="4">
+        <KpiCard lead label="Quanto suas obras já gastaram no período" :value="brl(data.kpis.appropriatedCost)" :hint="change.text" :hint-color="change.color" />
       </v-col>
-      <v-col cols="12" sm="6" lg>
-        <KpiCard label="Comprometido (a pagar)" :value="brl(data.kpis.openPayables, { compact: true })" hint="títulos em aberto" />
+      <v-col cols="12" sm="6" lg="4">
+        <KpiCard label="Ainda falta pagar" :value="brl(data.kpis.openPayables)" hint="contas lançadas que ainda não foram pagas" />
       </v-col>
-      <v-col cols="12" sm="6" lg>
-        <KpiCard label="Orçamento total" :value="brl(data.kpis.budgetTotal, { compact: true })" :progress="data.kpis.budgetCommittedPct" />
-      </v-col>
-      <v-col cols="6" sm="3" lg>
-        <KpiCard
-          label="Obras ativas"
-          :value="String(data.kpis.activeProjects).padStart(2, '0')"
-          :hint="data.kpis.newProjectsThisPeriod ? `+${data.kpis.newProjectsThisPeriod} novas no período` : undefined"
-          hint-color="success"
-        />
-      </v-col>
-      <v-col cols="6" sm="3" lg>
-        <KpiCard
-          label="Alertas"
-          icon="mdi-alert"
-          :value="String(data.kpis.openAlerts).padStart(2, '0')"
-          :value-color="data.kpis.criticalAlerts ? 'error' : undefined"
-          :hint="`${data.kpis.criticalAlerts} crítico(s)`"
-          :hint-color="data.kpis.criticalAlerts ? 'error' : undefined"
-        />
+      <v-col cols="12" sm="6" lg="4">
+        <KpiCard label="Orçamento de todas as obras" :value="brl(data.kpis.budgetTotal)" :progress="data.kpis.budgetCommittedPct" hint="já comprometido do orçamento" />
       </v-col>
     </v-row>
 
     <v-row dense>
       <v-col cols="12" lg="7">
-        <v-card class="pa-5 h-100">
-          <div class="d-flex justify-space-between align-center mb-3">
-            <div class="card-title">Obras</div>
-            <router-link class="link text-body-2" to="/obras">Ver todas →</router-link>
+        <v-card class="pa-5 mb-2">
+          <div class="d-flex justify-space-between align-center flex-wrap ga-2 mb-2">
+            <div>
+              <div class="card-title">Obras em andamento</div>
+              <div class="muted" style="font-size: var(--oo-fs-micro)">{{ data.kpis.activeProjects }} obra(s). Toque em uma para abrir.</div>
+            </div>
+            <router-link class="link" to="/obras">Ver todas as obras</router-link>
           </div>
-          <div
-            v-for="p in data.projects"
-            :key="p.id"
-            class="project-row"
-            @click="router.push({ name: 'project', params: { id: p.id } })"
-          >
+          <div v-for="p in data.projects" :key="p.id" class="project-row" @click="router.push({ name: 'project', params: { id: p.id } })">
             <ProjectThumb :name="p.name" :image-url="p.imageUrl" :size="64" />
             <div class="flex-grow-1" style="min-width: 0">
-              <div class="d-flex justify-space-between align-start ga-2 flex-wrap">
-                <div>
-                  <div class="font-weight-medium text-body-2">{{ p.name }}</div>
-                  <div class="text-caption" :class="p.committedPct >= 90 ? 'text-error' : 'muted'">{{ pct(p.committedPct) }} comprometido</div>
-                </div>
-                <div class="text-body-2 money">
-                  <strong>{{ brl(p.paid + p.open, { compact: true }) }}</strong>
-                  <span class="muted"> / {{ brl(p.budget, { compact: true }) }}</span>
-                </div>
+              <div class="d-flex justify-space-between align-start ga-3 flex-wrap mb-1">
+                <div class="font-weight-bold" style="font-size: var(--oo-fs-lead)">{{ p.name }}</div>
+                <span class="state" :class="p.committedPct >= 90 ? 'state-late' : p.committedPct >= 75 ? 'state-attention' : 'state-ok'">
+                  <v-icon size="16">{{ p.committedPct >= 90 ? 'mdi-alert-circle' : p.committedPct >= 75 ? 'mdi-alert' : 'mdi-check-circle' }}</v-icon>
+                  {{ pct(p.committedPct) }} do orçamento usado
+                </span>
               </div>
-              <StackBar class="mt-2" :paid="p.paid" :open="p.open" :budget="p.budget" />
+              <StackBar legend :paid="p.paid" :open="p.open" :budget="p.budget" />
             </div>
           </div>
-          <div v-if="!data.projects.length" class="muted text-body-2">Nenhuma obra ativa. <router-link class="link" to="/obras">Cadastrar obra</router-link></div>
-          <div class="text-caption muted mt-3">
-            <span class="mr-4"><span class="legend-dot" style="background: var(--oo-bright)" />Pago</span>
-            <span class="mr-4"><span class="legend-dot" style="background: var(--oo-accent)" />Comprometido (a pagar)</span>
-            <span><span class="legend-dot" style="background: var(--oo-track)" />Saldo do orçamento</span>
+          <div v-if="!data.projects.length" class="muted">Nenhuma obra em andamento. <router-link class="link" to="/obras">Cadastrar a primeira obra</router-link></div>
+        </v-card>
+        <div class="mt-2"></div>
+        <v-card class="pa-5">
+          <div class="d-flex justify-space-between align-center flex-wrap ga-2 mb-3">
+            <div>
+              <div class="card-title">Contas para pagar</div>
+              <div class="muted" style="font-size: var(--oo-fs-micro)">Nos próximos 30 dias.</div>
+            </div>
+            <router-link class="link" to="/contas-a-pagar">Ver todas as contas</router-link>
           </div>
+          <div v-for="t in data.upcomingPayables" :key="t.id" class="bill">
+            <div class="flex-grow-1" style="min-width: 0">
+              <div class="font-weight-bold" style="font-size: var(--oo-fs-lead); line-height: 1.25">{{ t.supplierName }}</div>
+              <div class="muted" style="font-size: var(--oo-fs-micro)">
+                vence {{ date(t.dueDate) }}<template v-if="t.projectNames"> · {{ t.projectNames }}</template>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="money font-weight-bold" style="font-size: var(--oo-fs-lead)">{{ brl(t.amount - t.paidAmount) }}</div>
+              <PayableChip :status="t.status" :due-date="t.dueDate" />
+            </div>
+          </div>
+          <div v-if="!data.upcomingPayables.length" class="muted py-3">Nada a pagar nos próximos 30 dias.</div>
         </v-card>
       </v-col>
       <v-col cols="12" lg="5">
-        <v-card class="pa-5 h-100">
-          <div class="card-title mb-4">Custos por categoria</div>
-          <DonutChart :data="data.costsByCategory" />
+        <v-card class="pa-5">
+          <div class="card-title">Para onde foi o dinheiro</div>
+          <div class="muted mb-3" style="font-size: var(--oo-fs-micro)">Notas aprovadas no período, da maior para a menor.</div>
+          <BarList :items="costItems" total-label="Total gasto no período" empty-text="Nenhuma nota aprovada neste período." />
         </v-card>
-      </v-col>
-
-      <v-col cols="12" lg="7">
-        <v-card class="pa-5 h-100">
-          <div class="d-flex justify-space-between align-center mb-2">
-            <div class="card-title">Contas a pagar <span class="font-weight-regular muted">(próximos 30 dias)</span></div>
-            <router-link class="link text-body-2" to="/contas-a-pagar">Ver todas →</router-link>
-          </div>
-          <v-table density="comfortable">
-            <thead>
-              <tr>
-                <th>Vencimento</th>
-                <th>Fornecedor</th>
-                <th class="d-none d-md-table-cell">Obra</th>
-                <th class="text-right">Valor</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="t in data.upcomingPayables" :key="t.id">
-                <td :class="new Date(t.dueDate) < new Date() ? 'text-error font-weight-medium' : ''">{{ date(t.dueDate) }}</td>
-                <td>
-                  <div class="text-truncate" style="max-width: 170px">{{ t.supplierName }}</div>
-                  <div class="text-caption muted text-truncate" style="max-width: 170px">{{ t.description }}</div>
-                </td>
-                <td class="d-none d-md-table-cell"><div class="text-truncate" style="max-width: 120px">{{ t.projectNames ?? '—' }}</div></td>
-                <td class="text-right money">{{ brl(t.amount - t.paidAmount) }}</td>
-                <td><PayableChip :status="t.status" :due-date="t.dueDate" /></td>
-              </tr>
-              <tr v-if="!data.upcomingPayables.length">
-                <td colspan="5" class="muted text-center">Nada a pagar nos próximos 30 dias.</td>
-              </tr>
-            </tbody>
-          </v-table>
-        </v-card>
-      </v-col>
-      <v-col cols="12" lg="5">
-        <v-card class="pa-5 h-100">
-          <div class="d-flex justify-space-between align-center mb-3">
+        <div class="mt-2"></div>
+        <v-card class="pa-5">
+          <div class="d-flex justify-space-between align-center flex-wrap ga-2 mb-1">
             <div class="card-title d-flex align-center">
-              <v-icon color="primary" class="mr-2">mdi-creation-outline</v-icon>Inteligência da OperaIA
-              <v-chip color="primary" variant="tonal" class="ml-2">regras</v-chip>
+              <v-icon color="primary" class="mr-2">mdi-magnify-scan</v-icon>O que o sistema encontrou
             </div>
-            <router-link class="link text-body-2" to="/inteligencia">Ver todos →</router-link>
+            <router-link class="link" to="/inteligencia">Ver tudo</router-link>
+          </div>
+          <div class="muted mb-3" style="font-size: var(--oo-fs-micro)">
+            Conferências automáticas nas notas e nas compras.<template v-if="data.kpis.criticalAlerts">&nbsp;{{ data.kpis.criticalAlerts }} precisa(m) de atenção.</template>
           </div>
           <div class="d-flex flex-column ga-2">
             <AlertItem v-for="a in data.alerts" :key="a.id" :alert="a" compact @open="openAlert(a)" />
-            <div v-if="!data.alerts.length" class="muted text-body-2">Nenhum alerta aberto. Tudo sob controle.</div>
+            <div v-if="!data.alerts.length" class="state state-ok"><v-icon size="16">mdi-check-circle</v-icon>Nada pendente. Está tudo em ordem.</div>
           </div>
         </v-card>
       </v-col>
@@ -233,16 +205,55 @@ function openAlert(a: Dashboard['alerts'][number]) {
 </template>
 
 <style scoped>
+.todo {
+  background: var(--oo-attention-bg);
+  border: 1px solid #f0dcb4;
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.todo-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.todo-list {
+  display: grid;
+  gap: 10px;
+}
+.todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
 .project-row {
   display: flex;
-  gap: 14px;
-  align-items: center;
-  padding: 10px;
-  margin: 0 -10px;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 14px 12px;
+  margin: 0 -12px;
   border-radius: 10px;
   cursor: pointer;
 }
+.project-row + .project-row {
+  border-top: 1px solid var(--oo-border);
+}
 .project-row:hover {
-  background: #f8faf9;
+  background: #f6faf8;
+}
+.bill {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+}
+.bill + .bill {
+  border-top: 1px solid var(--oo-border);
 }
 </style>

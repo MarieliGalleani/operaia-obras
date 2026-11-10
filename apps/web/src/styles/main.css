@@ -10,6 +10,26 @@
   --oo-text: #16211d;
   --oo-muted: #6b7a74;
   --oo-track: #e9edeb;
+
+  /* leitura: nada abaixo de 14px, porque o sistema é usado por quem lê pouco em tela */
+  --oo-fs-micro: 0.875rem;
+  --oo-fs-body: 1rem;
+  --oo-fs-lead: 1.0625rem;
+
+  /* dados: uma só matiz para comparar tamanho (do maior para o menor) */
+  --oo-data-1: #0b5a45;
+  --oo-data-2: #0e8a62;
+  --oo-data-3: #4fb391;
+  --oo-data-4: #9fd3be;
+  --oo-data-5: #d8ebe3;
+
+  /* situação: sempre acompanhada de ícone e palavra, nunca só a cor */
+  --oo-ok: #0e8a62;
+  --oo-ok-bg: #e7f4ef;
+  --oo-attention: #b26a00;
+  --oo-attention-bg: #fdf3e0;
+  --oo-late: #b3261e;
+  --oo-late-bg: #fdeceb;
 }
 
 html,
@@ -39,17 +59,19 @@ body,
 }
 
 .page-title {
-  font-size: 1.6rem;
+  font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .page-subtitle {
   color: var(--oo-muted);
-  font-size: 0.9rem;
+  font-size: var(--oo-fs-lead);
+  line-height: 1.45;
+  max-width: 62ch;
 }
 .card-title {
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -61,31 +83,92 @@ body,
   white-space: nowrap;
 }
 .kpi-label {
-  font-size: 0.82rem;
+  font-size: var(--oo-fs-body);
   color: var(--oo-muted);
   font-weight: 500;
+  line-height: 1.3;
 }
 .kpi-value {
-  font-size: 1.55rem;
+  font-size: 2rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
-  line-height: 1.25;
+  line-height: 1.15;
 }
 .link {
   color: var(--oo-primary);
   font-weight: 600;
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
+  font-size: var(--oo-fs-body);
 }
 .link:hover {
-  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+/* nenhum texto do sistema abaixo de 14px */
+.v-application .text-caption {
+  font-size: var(--oo-fs-micro) !important;
+  line-height: 1.4;
+}
+.v-application .text-body-2 {
+  font-size: var(--oo-fs-body) !important;
+  line-height: 1.5;
+}
+
+/* toda ação que a pessoa aperta tem altura de dedo e palavra escrita */
+.v-application .v-btn {
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.v-application .v-btn--size-default {
+  min-height: 44px;
+}
+
+/* painel de destaque: o número que responde a pergunta da tela */
+.lead-panel {
+  background: var(--oo-ok-bg);
+  border: 1px solid #cfe6dc;
+  border-left: 6px solid var(--oo-primary);
+  border-radius: 4px 14px 14px 4px;
+  padding: 20px 22px;
+}
+.lead-value {
+  font-size: clamp(1.9rem, 5vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+/* situação: cor + ícone + palavra */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--oo-fs-micro);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.state-ok {
+  color: #0a5c43;
+  background: var(--oo-ok-bg);
+}
+.state-attention {
+  color: #7d4a00;
+  background: var(--oo-attention-bg);
+}
+.state-late {
+  color: #8c1d17;
+  background: var(--oo-late-bg);
 }
 
 /* barra empilhada pago / a pagar / restante */
 .stack-bar {
   display: flex;
-  height: 8px;
+  height: 14px;
   border-radius: 999px;
   background: var(--oo-track);
   overflow: hidden;
@@ -96,8 +179,8 @@ body,
 }
 .legend-dot {
   display: inline-block;
-  width: 9px;
-  height: 9px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   margin-right: 6px;
   vertical-align: middle;
@@ -106,11 +189,17 @@ body,
 .v-data-table th {
   font-weight: 600 !important;
   color: var(--oo-muted) !important;
-  font-size: 0.8rem !important;
+  font-size: var(--oo-fs-micro) !important;
   white-space: nowrap;
 }
-.v-data-table td {
-  font-size: 0.86rem;
+.v-data-table td,
+.v-table td {
+  font-size: var(--oo-fs-body);
+}
+.v-data-table td,
+.v-data-table th {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
 }
 .clickable-rows tbody tr {
   cursor: pointer;

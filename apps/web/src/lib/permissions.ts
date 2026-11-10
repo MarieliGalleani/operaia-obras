@@ -12,7 +12,7 @@ export interface Perms {
 }
 
 export const SCREEN_INFO: Array<{ key: Screen; title: string; icon: string; to: string; hint: string }> = [
-  { key: 'dashboard', title: 'Visão Geral', icon: 'mdi-home-outline', to: '/', hint: 'Números da construtora e alertas do dia' },
+  { key: 'dashboard', title: 'Início', icon: 'mdi-home-outline', to: '/', hint: 'Suas obras, o que vence e o que precisa de decisão' },
   { key: 'obras', title: 'Obras', icon: 'mdi-office-building-outline', to: '/obras', hint: 'Custo, notas e andamento de cada obra' },
   { key: 'app_obra', title: 'App de obra', icon: 'mdi-hard-hat', to: '/campo', hint: 'Celular do canteiro: material, entregas, fotos, ocorrências, avanço. Sem valores' },
   { key: 'orcamentos', title: 'Orçamentos', icon: 'mdi-calculator-variant-outline', to: '/orcamentos', hint: 'Previsto × realizado por categoria' },
