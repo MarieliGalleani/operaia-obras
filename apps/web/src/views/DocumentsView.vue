@@ -30,8 +30,8 @@ const route = useRoute()
 const router = useRouter()
 const projects = useProjects()
 const tabs = [
-  { value: 'revisar', title: 'Para conferir', status: 'RECEBIDO,EM_REVISAO' },
-  { value: 'aprovadas', title: 'Aprovadas', status: 'APROVADO' },
+  { value: 'revisar', title: 'Aguardando conferência', status: 'RECEBIDO,EM_REVISAO' },
+  { value: 'aprovadas', title: 'Aprovadas (viram custo)', status: 'APROVADO' },
   { value: 'rejeitadas', title: 'Rejeitadas/canceladas', status: 'REJEITADO,CANCELADO' },
   { value: 'todas', title: 'Todas', status: '' },
 ]
@@ -47,7 +47,7 @@ const headers = [
   { title: 'Emissão', key: 'issueDate', width: 110 },
   { title: 'Obra', key: 'project' },
   { title: 'Categoria', key: 'category' },
-  { title: 'Valor', key: 'totalAmount', align: 'end' as const },
+  { title: 'Valor da nota', key: 'totalAmount', align: 'end' as const },
   { title: 'Situação', key: 'status' },
 ]
 

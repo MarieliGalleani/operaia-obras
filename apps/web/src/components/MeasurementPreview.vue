@@ -49,7 +49,7 @@ const PAY: Record<string, { text: string; color: string }> = {
       </div>
       <div v-else class="split">
         <div><span class="muted">Já lançado</span><b class="money">{{ brl(m.totals.realizedWithFee) }}</b></div>
-        <div><span class="muted">Ainda vem</span><b class="money">{{ brl(m.totals.expected - m.totals.realizedWithFee) }}</b></div>
+        <div><span class="muted">Previsto para fechar</span><b class="money">{{ brl(m.totals.expected - m.totals.realizedWithFee) }}</b></div>
       </div>
     </div>
 
@@ -70,7 +70,7 @@ const PAY: Record<string, { text: string; color: string }> = {
           <div v-for="i in m.forecast.items" :key="i.id" class="line">
             <span>
               {{ i.kind === 'PEDIDO' ? 'Compra aprovada' : 'Nota em conferência' }} · {{ i.supplier ?? '—' }}
-              <span class="text-caption muted">· {{ categoryLabel(i.category) }}<template v-if="i.date"> · {{ i.kind === 'PEDIDO' ? 'entrega' : 'emitida' }} {{ date(i.date) }}</template></span>
+              <span class="text-caption muted">· {{ categoryLabel(i.category) }}<template v-if="i.date"> · {{ i.kind === 'PEDIDO' ? 'entrega prevista' : 'emitida' }} {{ date(i.date) }}</template><template v-if="i.date && i.date < m.period.first"> · de mês anterior, ainda não lançada</template></span>
             </span>
             <span class="money">{{ brl(i.amount) }}</span>
           </div>
@@ -125,8 +125,7 @@ const PAY: Record<string, { text: string; color: string }> = {
     </div>
 
     <div class="text-caption muted mt-3">
-      Prévia calculada com as notas aprovadas (pela data de emissão), as notas que chegaram e aguardam conferência e o saldo das compras aprovadas com entrega
-      até o fechamento.<template v-if="admin"> A taxa de administração incide sobre material e mão de obra.</template> Valores podem mudar até o fechamento.
+      Como é calculado: notas aprovadas com data de emissão no período; notas que aguardam conferência; e o saldo das compras aprovadas com entrega até o fechamento.<template v-if="admin"> A taxa de administração incide sobre material e mão de obra.</template> Valores podem mudar até o fechamento.
     </div>
   </div>
 </template>

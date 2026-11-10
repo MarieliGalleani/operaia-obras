@@ -156,8 +156,17 @@ onMounted(load)
             class="mb-3"
             :disabled="!canEdit"
           />
-          <v-select v-model="form.measurementDay" :items="DAYS" label="Fechamento da medição" class="mb-1" :disabled="!canEdit" />
-          <v-switch v-model="form.ownerPaysSuppliers" color="primary" label="Proprietário paga as compras direto aos fornecedores" hide-details class="mb-2" :disabled="!canEdit" />
+          <v-select
+            v-model="form.measurementDay"
+            :items="DAYS"
+            label="Fechamento da medição"
+            hint="Padrão: o da construtora. Escolha um dia só se esta obra fechar diferente."
+            persistent-hint
+            class="mb-3"
+            :disabled="!canEdit"
+          />
+          <v-switch v-model="form.ownerPaysSuppliers" color="primary" label="Proprietário paga os fornecedores direto" hide-details class="mb-1" :disabled="!canEdit" />
+          <div class="text-caption muted mb-3">Ligado: o proprietário paga as compras aos fornecedores e a construtora recebe só a taxa.</div>
         </template>
         <v-text-field v-model="form.ownerName" label="Proprietário" class="mb-2" :disabled="!canEdit" />
         <v-text-field v-model="form.ownerEmail" label="E-mail do proprietário" type="email" :disabled="!canEdit" />
