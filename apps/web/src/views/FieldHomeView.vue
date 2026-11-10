@@ -69,9 +69,9 @@ const fmt = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
 
     <v-card v-for="p in rows" :key="p.id" class="obra-card mb-4" @click="router.push(`/campo/${p.id}`)">
       <div class="d-flex align-center ga-4">
-        <ProjectThumb :name="p.name" :image-url="p.imageUrl" :size="64" />
+        <ProjectThumb :name="p.name" :image-url="p.imageUrl" :size="56" />
         <div class="flex-grow-1" style="min-width: 0">
-          <div class="font-weight-bold text-truncate" style="font-size: 1.25rem; line-height: 1.2">{{ p.name }}</div>
+          <div class="font-weight-bold text-truncate" style="font-size: 1.1rem; line-height: 1.2">{{ p.name }}</div>
           <div class="muted text-truncate" style="font-size: var(--oo-fs-micro)">{{ p.code }}<template v-if="p.address"> · {{ p.address }}</template></div>
         </div>
       </div>
@@ -80,9 +80,9 @@ const fmt = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
         <div class="flex-grow-1">
           <div class="d-flex justify-space-between align-baseline mb-2">
             <span class="font-weight-medium">Avanço da obra</span>
-            <span class="font-weight-bold money" style="font-size: 1.15rem">{{ fmt(p.physicalPct) }}</span>
+            <span class="font-weight-bold money" style="font-size: 1.05rem">{{ fmt(p.physicalPct) }}</span>
           </div>
-          <v-progress-linear :model-value="p.physicalPct ?? 0" color="primary" bg-color="#E9EDEB" bg-opacity="1" height="14" rounded />
+          <v-progress-linear :model-value="p.physicalPct ?? 0" color="primary" bg-color="#E9EDEB" bg-opacity="1" height="10" rounded />
           <div v-if="p.physicalPct == null" class="muted mt-2" style="font-size: var(--oo-fs-micro)">O escritório ainda não cadastrou as etapas desta obra.</div>
         </div>
       </div>
@@ -110,7 +110,7 @@ const fmt = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
   max-width: 720px;
 }
 .obra-card {
-  padding: 18px;
+  padding: 15px;
   cursor: pointer;
 }
 .avanco {
@@ -127,7 +127,7 @@ const fmt = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
   margin-top: 14px;
 }
 .pend .state {
-  font-size: var(--oo-fs-body);
-  padding: 7px 12px;
+  font-size: var(--oo-fs-micro);
+  padding: 5px 10px;
 }
 </style>

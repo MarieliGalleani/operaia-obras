@@ -51,7 +51,7 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
 
 <style scoped>
 .bar-row {
-  padding: 10px 0;
+  padding: 8px 0;
 }
 .bar-row + .bar-row {
   border-top: 1px solid var(--oo-border);
@@ -64,15 +64,15 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
   margin-bottom: 7px;
 }
 .bar-name {
-  font-size: var(--oo-fs-lead);
+  font-size: var(--oo-fs-body);
   font-weight: 600;
 }
 .bar-amount {
-  font-size: var(--oo-fs-lead);
+  font-size: var(--oo-fs-body);
   font-weight: 700;
 }
 .bar-track {
-  height: 14px;
+  height: 10px;
   border-radius: 4px;
   background: #f1f4f2;
   overflow: hidden;
@@ -90,9 +90,9 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 2px solid var(--oo-text);
-  font-size: var(--oo-fs-lead);
+  font-size: var(--oo-fs-body);
 }
 </style>

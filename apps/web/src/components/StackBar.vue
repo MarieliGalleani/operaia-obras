@@ -44,7 +44,7 @@ const parts = computed(() => {
   display: grid;
   gap: 6px;
   margin-top: 12px;
-  font-size: 0.8125rem;
+  font-size: 0.78125rem;
   color: var(--oo-muted);
 }
 .legend-tight > div {
@@ -59,7 +59,7 @@ const parts = computed(() => {
 }
 .legend-tight b {
   margin-left: auto;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--oo-text);
 }
 .legend-tight .rest {

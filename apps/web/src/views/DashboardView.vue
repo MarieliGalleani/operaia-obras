@@ -145,7 +145,7 @@ function openAlert(a: Dashboard['alerts'][number]) {
       <h2 class="sec-title">Obras em andamento <span class="sec-count">{{ data.kpis.activeProjects }}</span></h2>
       <router-link class="link" to="/obras">Ver todas as obras</router-link>
     </div>
-    <div class="obras-grid mb-6">
+    <div class="obras-grid mb-5">
       <article v-for="p in data.projects" :key="p.id" class="obra" @click="router.push({ name: 'project', params: { id: p.id } })">
         <header class="obra-head">
           <ProjectThumb :name="p.name" :image-url="p.imageUrl" :size="52" />
@@ -224,7 +224,7 @@ function openAlert(a: Dashboard['alerts'][number]) {
 .band-todo-label {
   display: flex;
   align-items: center;
-  padding: 16px 20px;
+  padding: 12px 18px;
   font-weight: 700;
   color: #7d4a00;
   background: #fbe8c4;
@@ -239,8 +239,8 @@ function openAlert(a: Dashboard['alerts'][number]) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 20px;
+  gap: 14px;
+  padding: 10px 18px;
 }
 .todo-item + .todo-item {
   border-left: 1px solid #f0dcb4;
@@ -266,7 +266,7 @@ function openAlert(a: Dashboard['alerts'][number]) {
 }
 .cell {
   min-width: 0;
-  padding: 18px 22px;
+  padding: 14px 18px;
 }
 .cell + .cell {
   border-left: 1px solid var(--oo-border);
@@ -281,7 +281,7 @@ function openAlert(a: Dashboard['alerts'][number]) {
   font-weight: 500;
 }
 .cell-value {
-  font-size: clamp(1.7rem, 2.4vw, 2.2rem);
+  font-size: clamp(1.35rem, 1.7vw, 1.6rem);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.15;
@@ -308,7 +308,7 @@ function openAlert(a: Dashboard['alerts'][number]) {
   margin-bottom: 4px;
 }
 .sec-title {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -335,8 +335,8 @@ function openAlert(a: Dashboard['alerts'][number]) {
   min-width: 0;
   background: #fff;
   border: 1px solid var(--oo-border);
-  border-radius: 16px;
-  padding: 16px 16px 18px;
+  border-radius: 14px;
+  padding: 14px 14px 15px;
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
@@ -357,7 +357,7 @@ function openAlert(a: Dashboard['alerts'][number]) {
   white-space: nowrap;
 }
 .obra-state {
-  margin: 14px 0 10px;
+  margin: 11px 0 9px;
 }
 
 /* ---- rodapé em três painéis iguais */
@@ -381,15 +381,15 @@ function openAlert(a: Dashboard['alerts'][number]) {
   min-width: 0;
   background: #fff;
   border: 1px solid var(--oo-border);
-  border-radius: 16px;
-  padding: 18px 20px 20px;
+  border-radius: 14px;
+  padding: 15px 18px 17px;
 }
 .bill {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 10px 0;
+  padding: 8px 0;
 }
 .bill + .bill {
   border-top: 1px solid var(--oo-border);

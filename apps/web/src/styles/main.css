@@ -12,9 +12,9 @@
   --oo-track: #e9edeb;
 
   /* leitura: nada abaixo de 14px, porque o sistema é usado por quem lê pouco em tela */
-  --oo-fs-micro: 0.875rem;
-  --oo-fs-body: 1rem;
-  --oo-fs-lead: 1.0625rem;
+  --oo-fs-micro: 0.8125rem;
+  --oo-fs-body: 0.9375rem;
+  --oo-fs-lead: 1rem;
 
   /* dados: uma só matiz para comparar tamanho (do maior para o menor) */
   --oo-data-1: #0b5a45;
@@ -59,7 +59,7 @@ body,
 }
 
 .page-title {
-  font-size: 1.75rem;
+  font-size: 1.4rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.15;
@@ -71,7 +71,7 @@ body,
   max-width: 62ch;
 }
 .card-title {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -89,7 +89,7 @@ body,
   line-height: 1.3;
 }
 .kpi-value {
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
@@ -123,19 +123,19 @@ body,
   font-weight: 600;
 }
 .v-application .v-btn--size-default {
-  min-height: 44px;
+  min-height: 40px;
 }
 
 /* painel de destaque: o número que responde a pergunta da tela */
 .lead-panel {
   background: var(--oo-ok-bg);
   border: 1px solid #cfe6dc;
-  border-left: 6px solid var(--oo-primary);
+  border-left: 5px solid var(--oo-primary);
   border-radius: 4px 14px 14px 4px;
-  padding: 20px 22px;
+  padding: 16px 18px;
 }
 .lead-value {
-  font-size: clamp(1.9rem, 5vw, 2.6rem);
+  font-size: clamp(1.5rem, 3vw, 1.75rem);
   font-weight: 700;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
@@ -146,10 +146,10 @@ body,
 .state {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: var(--oo-fs-micro);
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 3px 9px;
   border-radius: 999px;
 }
 .state-ok {
@@ -168,7 +168,7 @@ body,
 /* barra empilhada pago / a pagar / restante */
 .stack-bar {
   display: flex;
-  height: 14px;
+  height: 10px;
   border-radius: 999px;
   background: var(--oo-track);
   overflow: hidden;
@@ -179,8 +179,8 @@ body,
 }
 .legend-dot {
   display: inline-block;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   margin-right: 6px;
   vertical-align: middle;
@@ -198,8 +198,8 @@ body,
 }
 .v-data-table td,
 .v-data-table th {
-  padding-top: 10px !important;
-  padding-bottom: 10px !important;
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
 }
 .clickable-rows tbody tr {
   cursor: pointer;
