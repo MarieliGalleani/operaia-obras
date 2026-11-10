@@ -53,7 +53,7 @@ async function submit() {
                 <stop offset="0" stop-color="#f3a04a" /><stop offset="1" stop-color="#f7c58d" />
               </linearGradient>
               <linearGradient id="lg-fade" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0.55" stop-color="#fff" /><stop offset="1" stop-color="#fff" stop-opacity="0" />
+                <stop offset="0.86" stop-color="#fff" /><stop offset="1" stop-color="#fff" stop-opacity="0" />
               </linearGradient>
               <mask id="m-fade"><rect width="640" height="400" fill="url(#lg-fade)" /></mask>
             </defs>
@@ -179,8 +179,10 @@ async function submit() {
   gap: 6px;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.75);
-  box-shadow: var(--oo-shadow);
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   font-size: var(--oo-fs-micro);
   font-weight: 600;
   color: var(--oo-muted);
@@ -225,21 +227,25 @@ async function submit() {
   width: 100%;
   height: auto;
 }
+/* vidro de verdade: pouco preenchimento, desfoque forte do que está atrás,
+   fio de luz na borda e brilho interno no topo */
 .glass,
 .glass-white {
   position: absolute;
   border-radius: 20px;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
 }
 .glass {
-  background: rgba(24, 38, 34, 0.62);
+  background: linear-gradient(135deg, rgba(28, 44, 39, 0.5), rgba(28, 44, 39, 0.34));
   color: #fff;
-  box-shadow: 0 18px 40px -18px rgba(16, 32, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 18px 40px -18px rgba(16, 32, 28, 0.5);
 }
 .glass-white {
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: var(--oo-shadow-lift);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.22));
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 16px 36px -18px rgba(16, 32, 28, 0.28);
 }
 .g-row {
   display: flex;
@@ -302,10 +308,10 @@ async function submit() {
 .bars span {
   flex: 1;
   border-radius: 3px 3px 0 0;
-  background: linear-gradient(180deg, #dfe5e6, rgba(223, 229, 230, 0.15));
+  background: rgba(32, 49, 44, 0.12);
 }
 .bars span.hot {
-  background: linear-gradient(180deg, var(--oo-orange), rgba(240, 135, 26, 0.18));
+  background: linear-gradient(180deg, var(--oo-orange), rgba(240, 135, 26, 0.55));
 }
 
 /* ---- formulário */
@@ -317,11 +323,12 @@ async function submit() {
 }
 .form-card {
   width: 100%;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.48));
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 28px;
-  box-shadow: var(--oo-shadow-lift);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 24px 50px -24px rgba(16, 32, 28, 0.3);
   padding: clamp(24px, 3vw, 36px);
 }
 .f-title {
