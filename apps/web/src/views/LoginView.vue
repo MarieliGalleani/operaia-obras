@@ -78,9 +78,9 @@ const SCAFFOLD_FRONT = (() => {
   l.push(`M${pt(14.2, 1, 0)}L${pt(14.2, 2.5, 1.3)}M${pt(14.2, 4, 2.6)}L${pt(14.2, 5.5, 3.9)}M${pt(14.2, 7, 1.3)}L${pt(14.2, 8.5, 2.6)}`)
   return l.join('')
 })()
-const BARS = [14, 20, 17, 26, 22, 30, 36, 28, 40, 34, 46, 38, 30, 44, 70, 58, 82, 66, 74, 90, 62, 78, 56, 68, 50, 60, 72, 54, 64, 48, 38, 44, 30, 36, 26, 32, 22, 28, 18, 24, 34, 40, 46, 52]
-const HOT_FROM = 14
-const HOT_TO = 29
+const BARS = [22, 30, 26, 38, 34, 46, 70, 58, 84, 66, 76, 92, 62, 50, 40, 46, 32, 38, 26, 30]
+const HOT_FROM = 6
+const HOT_TO = 12
 const NAV = ['Notas', 'Obras', 'Compras', 'Medição']
 
 async function submit() {
@@ -157,18 +157,11 @@ async function submit() {
         </div>
 
         <div class="glass-white g-bars">
-          <div class="g-row">
-            <div>
-              <div class="g-title">Gasto por semana</div>
-              <div class="g-num">77%<small><v-icon size="12">mdi-menu-down</v-icon>2,4%</small></div>
-            </div>
-            <span class="legend"><i />do orçamento</span>
-            <span class="g-corner light"><v-icon size="13">mdi-arrow-top-right</v-icon></span>
-          </div>
+          <div class="g-row"><span class="g-title">Gasto do orçamento</span><span class="g-corner light"><v-icon size="13">mdi-arrow-top-right</v-icon></span></div>
+          <div class="g-num">77%<small><v-icon size="12">mdi-menu-down</v-icon>2,4%</small></div>
           <div class="bars">
-            <span v-for="(h, i) in BARS" :key="i" :class="{ hot: i >= HOT_FROM && i <= HOT_TO, mark: i === HOT_FROM || i === HOT_TO }" :style="{ height: h + '%' }" />
+            <span v-for="(h, i) in BARS" :key="i" :class="{ hot: i >= HOT_FROM && i <= HOT_TO }" :style="{ height: h + '%' }" />
           </div>
-          <div class="scrub"><i :style="{ left: (HOT_FROM / BARS.length) * 100 + '%', width: ((HOT_TO - HOT_FROM + 1) / BARS.length) * 100 + '%' }" /></div>
         </div>
       </section>
 
@@ -283,7 +276,7 @@ async function submit() {
 .show {
   position: relative;
   min-width: 0;
-  min-height: 660px;
+  min-height: 600px;
 }
 .rail {
   position: absolute;
@@ -407,11 +400,11 @@ async function submit() {
 
 .g-bars {
   position: absolute;
-  left: 52px;
-  right: 3%;
-  bottom: 0;
-  padding: 16px 20px 0;
-  overflow: hidden;
+  right: 0;
+  bottom: 9%;
+  width: 214px;
+  padding: 14px 16px 14px;
+  z-index: 2;
 }
 .g-title {
   font-size: 0.8125rem;
@@ -430,26 +423,12 @@ async function submit() {
   color: #46544f;
   letter-spacing: 0;
 }
-.legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  font-size: 0.75rem;
-  color: #46544f;
-}
-.legend i {
-  width: 34px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--oo-orange);
-}
 .bars {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  height: 84px;
-  margin-top: -6px;
+  gap: 3px;
+  height: 46px;
+  margin-top: 10px;
 }
 .bars span {
   position: relative;
@@ -460,29 +439,6 @@ async function submit() {
 .bars span.hot {
   background: linear-gradient(180deg, #f0871a, rgba(240, 135, 26, 0.28));
 }
-.bars span.mark::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -14px;
-  width: 1.5px;
-  height: 40px;
-  background: #d93a4c;
-}
-.scrub {
-  position: relative;
-  height: 14px;
-  margin: 0 -20px;
-  background: rgba(60, 72, 68, 0.08);
-}
-.scrub i {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 999px 999px 0 0;
-  background: var(--oo-orange);
-}
-
 /* ---- formulário */
 .form-side {
   display: flex;
