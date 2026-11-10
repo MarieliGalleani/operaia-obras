@@ -19,6 +19,8 @@ const props = withDefaults(
     delta?: number | null
     /** texto grande no lugar da porcentagem (ex.: valor em reais) */
     display?: string
+    /** só o arco, sem número nem legenda (o cartão escreve ao lado) */
+    bare?: boolean
   }>(),
   { size: 128, warnAt: 75, dangerAt: 90, tone: 'auto' },
 )
@@ -51,20 +53,20 @@ const id = `g${Math.random().toString(36).slice(2, 8)}`
           <stop offset="100%" :stop-color="color" />
         </linearGradient>
       </defs>
-      <path d="M 12 66 A 52 52 0 0 1 116 66" fill="none" stroke="var(--oo-track)" stroke-width="11" stroke-linecap="round" />
+      <path d="M 12 66 A 52 52 0 0 1 116 66" fill="none" stroke="var(--oo-track)" stroke-width="13" stroke-linecap="round" />
       <path
         d="M 12 66 A 52 52 0 0 1 116 66"
         fill="none"
         :stroke="`url(#${id})`"
-        stroke-width="11"
+        stroke-width="13"
         stroke-linecap="round"
         :stroke-dasharray="`${dash} ${CIRC}`"
       />
     </svg>
-    <div class="g-center">
+    <div v-if="!bare" class="g-center">
       <div class="g-value" :style="{ color }">{{ display ?? `${Math.round(value)}%` }}</div>
     </div>
-    <div class="g-foot">
+    <div v-if="!bare" class="g-foot">
       <div class="g-label">{{ label }}</div>
       <div v-if="hint" class="g-hint">{{ hint }}</div>
     </div>
@@ -80,9 +82,9 @@ const id = `g${Math.random().toString(36).slice(2, 8)}`
   margin-top: -26px;
 }
 .g-value {
-  font-size: 1.4rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }

@@ -12,7 +12,8 @@
   --oo-line: #f0f3f4;
 
   /* tinta */
-  --oo-text: #101c1a;
+  --oo-text: #111917;
+  --oo-ink: #111917;
   --oo-muted: #6e7e7b;
   --oo-faint: #9aa8a5;
 
@@ -44,37 +45,43 @@
   --oo-late-bg: #fdecee;
 
   /* forma */
-  --oo-r-card: 20px;
-  --oo-r-inner: 13px;
-  --oo-shadow: 0 1px 2px rgba(16, 32, 28, 0.04), 0 10px 28px -12px rgba(16, 32, 28, 0.14);
+  --oo-r-card: 22px;
+  --oo-r-inner: 14px;
+  --oo-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 14px 34px -20px rgba(16, 32, 28, 0.22);
+  --oo-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.58));
+  --oo-glass-border: 1px solid rgba(255, 255, 255, 0.9);
   --oo-shadow-lift: 0 2px 6px rgba(16, 32, 28, 0.06), 0 18px 40px -16px rgba(16, 32, 28, 0.22);
 
   /* leitura */
-  --oo-fs-micro: 0.8125rem;
-  --oo-fs-body: 0.9375rem;
-  --oo-fs-lead: 1rem;
+  --oo-fs-micro: 0.86rem;
+  --oo-fs-body: 0.97rem;
+  --oo-fs-lead: 1.04rem;
 }
 
-* {
-  font-feature-settings: 'cv11', 'ss01';
-}
 html,
 body {
   background: var(--oo-bg);
 }
 .v-application {
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
-  background: var(--oo-bg) !important;
+  font-family: 'Urbanist Variable', 'Urbanist', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
   color: var(--oo-text);
-  letter-spacing: -0.006em;
+  letter-spacing: 0;
+  /* fundo claro com manchas suaves de cor, como nas referências */
+  background:
+    radial-gradient(760px 460px at 6% 0%, #fbf3df 0%, transparent 62%),
+    radial-gradient(900px 620px at 100% 6%, #e8eef6 0%, transparent 60%),
+    radial-gradient(800px 520px at 55% 100%, #eef3f1 0%, transparent 60%),
+    #f7f8f8 !important;
+  background-attachment: fixed !important;
 }
 
 /* ---------- tipografia */
 .page-title {
-  font-size: 1.5rem;
-  font-weight: 800;
+  font-size: clamp(1.7rem, 2.6vw, 2.2rem);
+  font-weight: 400;
   letter-spacing: -0.03em;
-  line-height: 1.12;
+  line-height: 1.08;
+  color: var(--oo-ink);
 }
 .page-subtitle {
   color: var(--oo-muted);
@@ -84,9 +91,10 @@ body {
 }
 .card-title,
 .sec-title {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 1.15rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--oo-ink);
 }
 .sec-label {
   font-size: var(--oo-fs-micro);
@@ -107,21 +115,24 @@ body {
 }
 .kpi-value,
 .big-num {
-  font-size: 1.75rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-size: 1.9rem;
+  font-weight: 400;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   line-height: 1.08;
+  color: var(--oo-ink);
 }
 .link {
-  color: var(--oo-primary);
+  color: var(--oo-ink);
   font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(17, 25, 23, 0.25);
+  text-underline-offset: 3px;
   cursor: pointer;
   font-size: var(--oo-fs-body);
 }
 .link:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration-color: var(--oo-ink);
 }
 .v-application .text-caption {
   font-size: var(--oo-fs-micro) !important;
@@ -134,20 +145,30 @@ body {
 
 /* ---------- cartões: branco, sem contorno, sombra macia */
 .v-application .v-card {
-  border: 0 !important;
+  border: var(--oo-glass-border) !important;
   border-radius: var(--oo-r-card) !important;
   box-shadow: var(--oo-shadow) !important;
-  background: var(--oo-surface);
+  background: var(--oo-glass);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+}
+.v-overlay .v-card,
+.v-menu .v-card,
+.v-dialog .v-card {
+  background: rgba(255, 255, 255, 0.96);
 }
 .panel {
   min-width: 0;
-  background: var(--oo-surface);
+  background: var(--oo-glass);
+  border: var(--oo-glass-border);
   border-radius: var(--oo-r-card);
   box-shadow: var(--oo-shadow);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
   padding: 20px 22px 22px;
 }
 .panel-sunken {
-  background: var(--oo-sunken);
+  background: rgba(17, 25, 23, 0.035);
   border-radius: var(--oo-r-inner);
   padding: 14px 16px;
 }
@@ -162,11 +183,72 @@ body {
   min-height: 42px;
   padding-inline: 18px;
 }
-.v-application .v-btn--variant-flat {
-  box-shadow: 0 6px 16px -8px rgba(13, 155, 108, 0.75);
+.v-application .v-btn.bg-primary {
+  background: var(--oo-ink) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 22px -12px rgba(17, 25, 23, 0.65);
+}
+.v-application .v-btn--variant-tonal.text-primary {
+  color: var(--oo-ink) !important;
+}
+.v-application .v-btn--variant-outlined {
+  border-color: rgba(17, 25, 23, 0.16);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* abas em pílula, com a ativa preta */
+.v-application .v-tabs {
+  height: auto !important;
+}
+.v-application .v-tabs .v-slide-group__content {
+  gap: 4px;
+  padding: 6px;
+}
+.v-application .v-tab.v-btn {
+  min-height: 36px;
+  height: 36px;
+  border-radius: 999px !important;
+  padding-inline: 16px;
+  color: #2c3936 !important;
+  font-weight: 500;
+  min-width: 0;
+}
+.v-application .v-tab--selected.v-btn {
+  background: var(--oo-ink) !important;
+  color: #fff !important;
+}
+.v-application .v-tab--selected .v-btn__content,
+.v-application .v-tab--selected .v-icon {
+  color: #fff !important;
+}
+.v-application .v-tab__slider {
+  display: none;
+}
+.v-application .v-btn-toggle .v-btn--active {
+  background: var(--oo-ink) !important;
+  color: #fff !important;
+}
+
+/* botão redondo de ícone */
+.round-btn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 20px -12px rgba(16, 32, 28, 0.3);
+  color: #46544f;
 }
 .v-application .v-field {
-  border-radius: 12px;
+  border-radius: 14px;
+}
+.v-application .v-field--variant-outlined {
+  background: rgba(255, 255, 255, 0.6);
+}
+.v-application .v-progress-linear {
+  border-radius: 999px;
 }
 
 /* ---------- situação e etiquetas */
@@ -228,19 +310,20 @@ body {
 .open-corner {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: 0;
-  border-radius: 11px;
-  background: var(--oo-sunken);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 14px -8px rgba(16, 32, 28, 0.4);
   color: var(--oo-muted);
   cursor: pointer;
   flex: none;
   transition: background 0.15s ease, color 0.15s ease;
 }
 .open-corner:hover {
-  background: var(--oo-primary-soft);
-  color: var(--oo-primary);
+  background: var(--oo-ink);
+  color: #fff;
 }
 
 /* ---------- barras */
@@ -266,9 +349,12 @@ body {
 }
 
 /* ---------- tabelas */
+.v-application .v-table {
+  background: transparent;
+}
 .v-data-table th {
   color: var(--oo-muted) !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
   font-size: var(--oo-fs-micro) !important;
   white-space: nowrap;
 }
@@ -293,4 +379,15 @@ body {
   .v-main {
     padding: 0 !important;
   }
+}
+
+/* as classes de texto do Vuetify trazem Roboto: tudo segue a fonte do sistema */
+.v-application [class*='text-'],
+.v-application .v-btn,
+.v-application .v-field,
+.v-application .v-list-item-title,
+.v-application .v-chip,
+.v-application input,
+.v-application textarea {
+  font-family: inherit !important;
 }

@@ -36,9 +36,9 @@ const emit = defineEmits<{ (e: 'run', key: string): void }>()
   gap: 2px;
   text-align: left;
   padding: 14px 15px 15px;
-  border: 0;
-  border-radius: var(--oo-r-inner);
-  background: var(--oo-surface);
+  border-radius: 18px;
+  background: var(--oo-glass);
+  border: var(--oo-glass-border);
   box-shadow: var(--oo-shadow);
   cursor: pointer;
   transition: box-shadow 0.18s ease, transform 0.18s ease;
@@ -56,7 +56,7 @@ const emit = defineEmits<{ (e: 'run', key: string): void }>()
   place-items: center;
   width: 38px;
   height: 38px;
-  border-radius: 11px;
+  border-radius: 50%;
   margin-bottom: 8px;
 }
 .tone-primary .tile-icon {
@@ -87,8 +87,8 @@ const emit = defineEmits<{ (e: 'run', key: string): void }>()
   text-align: center;
 }
 .tile-label {
-  font-weight: 700;
-  font-size: var(--oo-fs-body);
+  font-weight: 600;
+  font-size: var(--oo-fs-lead);
   line-height: 1.2;
 }
 .tile-hint {

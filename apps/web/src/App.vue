@@ -94,7 +94,7 @@ function logout() {
       <router-view />
     </template>
     <template v-else-if="isPortal">
-      <v-app-bar flat height="64" color="surface" class="appbar">
+      <v-app-bar flat height="64" color="transparent" class="appbar">
         <div class="d-flex align-center ml-4 ga-3" style="min-width: 0">
           <router-link to="/proprietario" class="d-flex align-center" style="text-decoration: none; color: inherit" aria-label="Minhas obras"><AppLogo /></router-link>
           <v-divider vertical class="my-4" />
@@ -137,7 +137,7 @@ function logout() {
       </v-main>
     </template>
     <template v-else>
-      <v-navigation-drawer v-model="drawer" color="surface" width="236" :permanent="mdAndUp" class="sidebar" border="0">
+      <v-navigation-drawer v-model="drawer" color="transparent" width="236" :permanent="mdAndUp" class="sidebar" border="0">
         <div class="pa-5 pb-4"><AppLogo /></div>
         <v-list nav density="comfortable" class="px-3">
           <v-list-item
@@ -157,7 +157,7 @@ function logout() {
         </template>
       </v-navigation-drawer>
 
-      <v-app-bar flat height="64" color="surface" class="appbar">
+      <v-app-bar flat height="64" color="transparent" class="appbar">
         <v-app-bar-nav-icon v-if="!mdAndUp" @click="drawer = !drawer" />
         <div class="d-flex align-center ml-4" style="min-width: 0">
           <v-icon v-if="mdAndUp" color="primary" class="mr-2">mdi-domain</v-icon>
@@ -292,31 +292,42 @@ function logout() {
   border-bottom: 1px solid #f3dcb0;
 }
 .appbar {
-  border-bottom: 1px solid var(--oo-line) !important;
+  background: rgba(247, 248, 248, 0.6) !important;
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 0 !important;
 }
-/* barra lateral clara: o item ativo é uma pílula verde suave */
+/* barra lateral de vidro: o item ativo é uma pílula preta */
 .sidebar {
-  border-right: 1px solid var(--oo-line) !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-right: 1px solid rgba(255, 255, 255, 0.9) !important;
 }
 .sidebar .nav-item {
-  color: var(--oo-muted) !important;
-  font-weight: 600;
-  margin-bottom: 2px;
+  color: #46544f !important;
+  font-weight: 500;
+  margin-bottom: 3px;
+  min-height: 42px;
 }
 .sidebar .nav-item .v-list-item-title {
-  font-size: 0.9rem !important;
-  font-weight: 600;
-  letter-spacing: -0.012em;
+  font-size: 0.97rem !important;
+  font-weight: 500;
 }
 .sidebar .nav-item:hover {
-  background: var(--oo-sunken);
+  background: rgba(255, 255, 255, 0.8);
 }
 .sidebar .nav-active {
-  background: var(--oo-primary-soft) !important;
-  color: var(--oo-primary-deep) !important;
+  background: var(--oo-ink) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 22px -12px rgba(17, 25, 23, 0.6);
 }
 .sidebar .nav-active .v-icon {
-  color: var(--oo-primary) !important;
+  color: #fff !important;
+  opacity: 1;
+}
+.sidebar .nav-active .v-list-item__overlay {
+  opacity: 0 !important;
 }
 .sidebar-foot {
   color: var(--oo-faint);

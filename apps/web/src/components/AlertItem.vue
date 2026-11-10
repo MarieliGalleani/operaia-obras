@@ -33,7 +33,7 @@ const action = computed(() =>
     </div>
     <div class="a-side">
       <slot />
-      <v-btn size="small" variant="tonal" color="primary" :prepend-icon="action.icon" @click.stop="$emit('open')">{{ action.label }}</v-btn>
+      <v-btn size="small" variant="outlined" :prepend-icon="action.icon" @click.stop="$emit('open')">{{ action.label }}</v-btn>
     </div>
   </div>
 </template>
@@ -47,11 +47,11 @@ const action = computed(() =>
   padding: 12px 13px;
   border: 0;
   border-radius: var(--oo-r-inner);
-  background: var(--oo-sunken);
+  background: rgba(17, 25, 23, 0.035);
   transition: background 0.15s ease;
 }
 .alert-item:hover {
-  background: #eef3f4;
+  background: rgba(17, 25, 23, 0.06);
 }
 .tags {
   display: flex;

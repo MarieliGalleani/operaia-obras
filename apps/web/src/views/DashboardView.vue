@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import ActionTiles from '@/components/ActionTiles.vue'
 import AlertItem from '@/components/AlertItem.vue'
 import BarList from '@/components/BarList.vue'
+import BuildingArt from '@/components/BuildingArt.vue'
 import GaugeArc from '@/components/GaugeArc.vue'
 import PeriodPicker from '@/components/PeriodPicker.vue'
 import ProjectThumb from '@/components/ProjectThumb.vue'
@@ -94,45 +95,69 @@ function openAlert(a: Dashboard['alerts'][number]) {
 </script>
 
 <template>
-  <div class="d-flex align-center justify-space-between flex-wrap ga-4 mb-5">
-    <div>
-      <div class="page-title">Suas obras hoje</div>
-      <div class="page-subtitle">Quanto cada obra já gastou, o que vence agora e o que precisa da sua decisão.</div>
-    </div>
-    <div class="d-flex ga-2 align-center flex-wrap">
-      <PeriodPicker v-model="period" />
-      <v-btn variant="tonal" prepend-icon="mdi-tray-arrow-down" :loading="exporting" @click="exportPeriod">Baixar planilha</v-btn>
-    </div>
-  </div>
-
   <v-skeleton-loader v-if="loading && !data" type="card, card" />
 
   <template v-if="data">
-    <!-- destaque: o número da tela, com as obras que o compõem -->
-    <div class="top-grid mb-3">
+    <div class="top-grid mb-4">
+      <!-- destaque: título leve, obra em traço e o número do período num cartão de vidro -->
       <section class="hero">
-        <div class="hero-top">
-          <span class="hero-kicker">Gasto no período</span>
-          <span v-if="change !== null" class="delta" :class="change >= 0 ? 'delta-up' : 'delta-down'">
-            <v-icon size="13">{{ change >= 0 ? 'mdi-trending-up' : 'mdi-trending-down' }}</v-icon>{{ pct(Math.abs(change)) }}
-          </span>
-        </div>
-        <div class="hero-value money">{{ brl(data.kpis.appropriatedCost) }}</div>
-        <div class="hero-sub">
-          {{ change === null ? 'sem período anterior para comparar' : `${change >= 0 ? 'a mais' : 'a menos'} que no período anterior` }}
-        </div>
-        <div class="hero-foot">
-          <div class="thumbs">
-            <ProjectThumb v-for="p in data.projects.slice(0, 4)" :key="p.id" :name="p.name" :image-url="p.imageUrl" :size="34" class="thumb" />
+        <div class="hero-copy">
+          <h1 class="page-title">Suas obras <br />hoje</h1>
+          <p class="hero-lede">Quanto cada obra já gastou, o que vence agora e o que precisa da sua decisão.</p>
+          <div class="hero-tools">
+            <PeriodPicker v-model="period" />
+            <v-btn variant="outlined" prepend-icon="mdi-tray-arrow-down" :loading="exporting" @click="exportPeriod">Baixar planilha</v-btn>
           </div>
-          <span>{{ data.kpis.activeProjects }} obras em andamento</span>
+        </div>
+        <BuildingArt class="hero-art" />
+        <div class="hero-glass">
+          <div class="hg-row"><span>Gasto no período</span><span class="hg-corner"><v-icon size="13">mdi-arrow-top-right</v-icon></span></div>
+          <div class="hg-value money">{{ brl(data.kpis.appropriatedCost) }}</div>
+          <div class="hg-row">
+            <span v-if="change !== null" class="hg-delta"><v-icon size="13">{{ change >= 0 ? 'mdi-menu-up' : 'mdi-menu-down' }}</v-icon>{{ pct(Math.abs(change)) }} {{ change >= 0 ? 'a mais' : 'a menos' }}</span>
+            <span v-else class="hg-delta">sem período anterior</span>
+            <div class="thumbs">
+              <ProjectThumb v-for="p in data.projects.slice(0, 3)" :key="p.id" :name="p.name" :image-url="p.imageUrl" :size="26" class="thumb" />
+              <i v-if="data.projects.length > 3" class="thumb-more">+{{ data.projects.length - 3 }}</i>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section class="panel gauges">
-        <GaugeArc :value="data.kpis.budgetCommittedPct" label="Orçamento comprometido" :hint="brl(data.kpis.budgetTotal) + ' no total'" />
-        <GaugeArc :value="paidShare" tone="blue" label="Do gasto já foi pago" :hint="brl(data.kpis.openPayables) + ' em aberto'" />
-      </section>
+      <div class="side-cards">
+        <section class="panel g-card">
+          <div class="gc-head"><span class="gc-ic"><v-icon size="15">mdi-wallet-outline</v-icon></span>Orçamento comprometido<span class="open-corner ml-auto"><v-icon size="14">mdi-arrow-top-right</v-icon></span></div>
+          <div class="gc-body">
+            <div>
+              <div class="gc-hint">{{ brl(data.kpis.budgetTotal) }} no total</div>
+              <div class="big-num">{{ pct(data.kpis.budgetCommittedPct) }}</div>
+            </div>
+            <GaugeArc bare :value="data.kpis.budgetCommittedPct" :size="118" label="Orçamento comprometido" />
+          </div>
+        </section>
+        <section class="panel g-card">
+          <div class="gc-head"><span class="gc-ic"><v-icon size="15">mdi-cash-check</v-icon></span>Do gasto já foi pago<span class="open-corner ml-auto"><v-icon size="14">mdi-arrow-top-right</v-icon></span></div>
+          <div class="gc-body">
+            <div>
+              <div class="gc-hint">{{ brl(data.kpis.openPayables) }} em aberto</div>
+              <div class="big-num">{{ pct(paidShare) }}</div>
+            </div>
+            <GaugeArc bare :value="paidShare" tone="blue" :size="118" label="Do gasto já foi pago" />
+          </div>
+        </section>
+        <section class="panel g-card">
+          <div class="gc-head"><span class="gc-ic"><v-icon size="15">mdi-home-city-outline</v-icon></span>Obras em andamento<span class="open-corner ml-auto"><v-icon size="14">mdi-arrow-top-right</v-icon></span></div>
+          <div class="gc-body">
+            <div>
+              <div class="gc-hint">{{ data.kpis.documentsPending }} nota(s) a conferir</div>
+              <div class="big-num">{{ data.kpis.activeProjects }}</div>
+            </div>
+            <div class="mini-bars" aria-hidden="true">
+              <span v-for="p in data.projects" :key="p.id" :style="{ height: Math.max(p.committedPct, 8) + '%' }" :class="stateOf(p.committedPct)" />
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
 
     <!-- o que precisa da pessoa agora -->
@@ -232,90 +257,186 @@ function openAlert(a: Dashboard['alerts'][number]) {
 <style scoped>
 .top-grid {
   display: grid;
-  grid-template-columns: minmax(300px, 1.05fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr);
   gap: 14px;
 }
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .top-grid {
     grid-template-columns: 1fr;
   }
 }
-
-/* destaque com fundo em degradê, como nas referências */
 .hero {
-  min-width: 0;
   position: relative;
+  min-width: 0;
+  min-height: 430px;
   overflow: hidden;
-  border-radius: var(--oo-r-card);
-  padding: 22px 24px 20px;
-  color: #fff;
-  background: linear-gradient(135deg, #0b7f59 0%, #0d9b6c 52%, #19b982 100%);
-  box-shadow: 0 14px 34px -16px rgba(13, 155, 108, 0.75);
+  border-radius: 28px;
+  border: var(--oo-glass-border);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.3));
+  box-shadow: var(--oo-shadow);
 }
-.hero::after {
-  content: '';
+.hero-copy {
+  position: relative;
+  z-index: 2;
+  padding: 28px 30px;
+  max-width: 400px;
+}
+.hero-copy .page-title {
+  font-size: clamp(2.2rem, 3.4vw, 3rem);
+  line-height: 1.02;
+}
+.hero-lede {
+  margin-top: 10px;
+  color: var(--oo-muted);
+  font-size: var(--oo-fs-micro);
+  line-height: 1.45;
+  max-width: 30ch;
+}
+.hero-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.hero-art {
   position: absolute;
-  right: -70px;
-  top: -90px;
-  width: 240px;
-  height: 240px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
+  right: -5%;
+  bottom: -9%;
+  width: 78%;
+  max-width: 720px;
+  pointer-events: none;
 }
-.hero-top {
+.hero-glass {
+  position: absolute;
+  right: 26%;
+  top: 34%;
+  z-index: 2;
+  min-width: 230px;
+  padding: 14px 16px 15px;
+  border-radius: 20px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(52, 58, 56, 0.6), rgba(52, 58, 56, 0.4));
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 20px 44px -18px rgba(16, 24, 22, 0.55);
+}
+.hg-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  position: relative;
-}
-.hero-kicker {
   font-size: var(--oo-fs-micro);
-  font-weight: 600;
-  opacity: 0.85;
 }
-.hero .delta {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+.hg-corner {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
 }
-.hero-value {
-  font-size: clamp(1.9rem, 3.2vw, 2.5rem);
-  font-weight: 800;
-  letter-spacing: -0.045em;
-  line-height: 1.08;
-  margin-top: 8px;
-  position: relative;
+.hg-value {
+  font-size: 1.85rem;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 8px 0 10px;
 }
-.hero-sub {
-  font-size: var(--oo-fs-micro);
-  opacity: 0.86;
-  margin-top: 2px;
-}
-.hero-foot {
-  display: flex;
+.hg-delta {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 18px;
-  font-size: var(--oo-fs-micro);
-  opacity: 0.92;
-  position: relative;
+  opacity: 0.85;
 }
 .thumbs {
   display: flex;
-  margin-right: 12px;
+  align-items: center;
 }
-.thumbs .thumb {
-  margin-right: -8px;
-  border-radius: 11px;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.95);
+.thumbs .thumb,
+.thumb-more {
+  margin-left: -7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+.thumb-more {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.24);
+  font-style: normal;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+@media (max-width: 700px) {
+  .hero {
+    min-height: 0;
+  }
+  .hero-art {
+    display: none;
+  }
+  .hero-glass {
+    position: static;
+    margin: 0 20px 20px;
+  }
 }
 
-.gauges {
+/* cartões de medidor, como os "Details" da referência */
+.side-cards {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.g-card {
+  padding: 14px 16px 12px;
+}
+.gc-head {
   display: flex;
   align-items: center;
-  justify-content: space-around;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 9px;
+  font-size: var(--oo-fs-body);
+  font-weight: 500;
+}
+.gc-ic {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(17, 25, 23, 0.06);
+  color: #46544f;
+  flex: none;
+}
+.gc-body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+.gc-hint {
+  font-size: 0.78rem;
+  color: var(--oo-muted);
+  margin-bottom: 2px;
+}
+.mini-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  height: 58px;
+  margin-bottom: 6px;
+}
+.mini-bars span {
+  width: 16px;
+  border-radius: 999px 999px 3px 3px;
+  background: linear-gradient(180deg, var(--oo-primary), rgba(13, 155, 108, 0.3));
+}
+.mini-bars span.attention {
+  background: linear-gradient(180deg, var(--oo-orange), rgba(240, 135, 26, 0.3));
+}
+.mini-bars span.late {
+  background: linear-gradient(180deg, var(--oo-red), rgba(217, 58, 76, 0.3));
 }
 
 /* faixa de providências */
@@ -323,7 +444,8 @@ function openAlert(a: Dashboard['alerts'][number]) {
   display: flex;
   align-items: stretch;
   flex-wrap: wrap;
-  background: var(--oo-surface);
+  background: var(--oo-glass);
+  border: var(--oo-glass-border);
   border-radius: var(--oo-r-card);
   box-shadow: var(--oo-shadow);
   overflow: hidden;
@@ -378,7 +500,8 @@ function openAlert(a: Dashboard['alerts'][number]) {
 }
 .obra {
   min-width: 0;
-  background: var(--oo-surface);
+  background: var(--oo-glass);
+  border: var(--oo-glass-border);
   border-radius: var(--oo-r-card);
   box-shadow: var(--oo-shadow);
   padding: 16px 16px 18px;
@@ -395,8 +518,8 @@ function openAlert(a: Dashboard['alerts'][number]) {
   gap: 11px;
 }
 .obra-name {
-  font-size: var(--oo-fs-body);
-  font-weight: 700;
+  font-size: var(--oo-fs-lead);
+  font-weight: 600;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;

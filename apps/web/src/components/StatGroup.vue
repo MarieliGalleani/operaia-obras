@@ -24,14 +24,15 @@ defineProps<{
 <style scoped>
 .grp {
   min-width: 0;
-  background: var(--oo-surface);
+  background: var(--oo-glass);
+  border: var(--oo-glass-border);
   border-radius: var(--oo-r-card);
   box-shadow: var(--oo-shadow);
   padding: 16px 20px 18px;
 }
 .grp-title {
   font-size: var(--oo-fs-micro);
-  font-weight: 700;
+  font-weight: 500;
   color: var(--oo-muted);
   margin-bottom: 9px;
 }
@@ -44,8 +45,8 @@ defineProps<{
   min-width: 0;
 }
 .grp-value {
-  font-size: clamp(1.05rem, 1.4vw, 1.25rem);
-  font-weight: 700;
+  font-size: clamp(1.2rem, 1.6vw, 1.5rem);
+  font-weight: 400;
   letter-spacing: -0.02em;
   line-height: 1.15;
   overflow-wrap: anywhere;

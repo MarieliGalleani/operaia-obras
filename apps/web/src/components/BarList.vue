@@ -70,7 +70,7 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
 }
 .bar-amount {
   font-size: var(--oo-fs-body);
-  font-weight: 700;
+  font-weight: 600;
 }
 .bar-track {
   height: 10px;
