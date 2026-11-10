@@ -35,15 +35,17 @@ const emit = defineEmits<{ (e: 'run', key: string): void }>()
   align-items: flex-start;
   gap: 2px;
   text-align: left;
-  padding: 13px 14px 14px;
-  border: 1px solid var(--oo-border);
-  border-radius: 14px;
-  background: #fff;
+  padding: 14px 15px 15px;
+  border: 0;
+  border-radius: var(--oo-r-inner);
+  background: var(--oo-surface);
+  box-shadow: var(--oo-shadow);
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.08s ease;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
 .tile:hover {
-  border-color: var(--oo-bright);
+  box-shadow: var(--oo-shadow-lift);
+  transform: translateY(-2px);
 }
 .tile:active {
   transform: scale(0.985);
@@ -58,16 +60,16 @@ const emit = defineEmits<{ (e: 'run', key: string): void }>()
   margin-bottom: 8px;
 }
 .tone-primary .tile-icon {
-  background: var(--oo-ok-bg);
+  background: var(--oo-primary-soft);
   color: var(--oo-primary);
 }
 .tone-attention .tile-icon {
-  background: var(--oo-attention-bg);
-  color: var(--oo-attention);
+  background: var(--oo-orange-soft);
+  color: var(--oo-orange);
 }
 .tone-late .tile-icon {
-  background: var(--oo-late-bg);
-  color: var(--oo-late);
+  background: var(--oo-red-soft);
+  color: var(--oo-red);
 }
 .tile-badge {
   position: absolute;

@@ -44,13 +44,14 @@ const action = computed(() =>
   display: flex;
   gap: 11px;
   align-items: flex-start;
-  padding: 11px 12px;
-  border: 1px solid var(--oo-border);
-  border-radius: 12px;
-  background: #fff;
+  padding: 12px 13px;
+  border: 0;
+  border-radius: var(--oo-r-inner);
+  background: var(--oo-sunken);
+  transition: background 0.15s ease;
 }
 .alert-item:hover {
-  border-color: #cfdad5;
+  background: #eef3f4;
 }
 .tags {
   display: flex;
@@ -63,9 +64,9 @@ const action = computed(() =>
   font-size: 0.6875rem;
   font-weight: 700;
   color: var(--oo-muted);
-  background: var(--oo-track);
+  background: var(--oo-surface);
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 2px 9px;
 }
 .tags .state {
   font-size: 0.6875rem;

@@ -8,6 +8,7 @@ import ProjectOwnerTab from '@/components/ProjectOwnerTab.vue'
 import ProjectThumb from '@/components/ProjectThumb.vue'
 import StackBar from '@/components/StackBar.vue'
 import StatGroup from '@/components/StatGroup.vue'
+import GaugeArc from '@/components/GaugeArc.vue'
 import StageTimeline from '@/components/StageTimeline.vue'
 import { api } from '@/lib/api'
 import { CATEGORIES, DOC_STATUS, PAYABLE_STATUS, brl, categoryColor, date, pct } from '@/lib/format'
@@ -186,24 +187,19 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
         Cadastre as etapas da obra para o mestre informar o avanço físico pelo celular e comparar com o gasto.
       </div>
       <template v-else>
-        <div class="progress-compare mb-4">
-          <div>
-            <div class="text-caption muted">Avanço físico</div>
-            <div class="text-h5 font-weight-bold text-primary">{{ pct(field.physicalPct) }}</div>
-            <v-progress-linear :model-value="field.physicalPct ?? 0" color="primary" bg-color="grey-lighten-2" height="10" rounded />
+        <div class="gauge-row mb-4">
+          <div class="gauge-pair">
+            <GaugeArc :value="field.physicalPct ?? 0" tone="primary" label="Avanço físico" hint="quanto da obra está pronta" />
+            <GaugeArc :value="financialPct ?? 0" label="Gasto do orçamento" hint="quanto do orçamento já foi usado" />
           </div>
-          <div>
-            <div class="text-caption muted">Gasto do orçamento</div>
-            <div class="text-h5 font-weight-bold" :class="gap != null && gap > 10 ? 'text-error' : ''">{{ pct(financialPct) }}</div>
-            <v-progress-linear :model-value="financialPct ?? 0" :color="gap != null && gap > 10 ? 'error' : 'secondary'" bg-color="grey-lighten-2" height="10" rounded />
-          </div>
+          <v-alert v-if="gap != null && gap > 10" type="warning" variant="tonal" density="compact" class="flex-grow-1">
+            O gasto está <b>{{ Math.round(gap) }} pontos à frente</b> do avanço físico. Vale conferir se há material comprado e ainda não aplicado, ou se o custo está acima do previsto.
+          </v-alert>
+          <v-alert v-else-if="gap != null && gap < -10" type="info" variant="tonal" density="compact" class="flex-grow-1">
+            O avanço físico está {{ Math.round(-gap) }} pontos à frente do gasto: pode haver notas ainda não lançadas.
+          </v-alert>
+          <div v-else class="state state-ok"><v-icon size="16">mdi-check-circle</v-icon>Gasto e avanço estão em linha</div>
         </div>
-        <v-alert v-if="gap != null && gap > 10" type="warning" variant="tonal" density="compact" class="mb-4">
-          O gasto está <b>{{ Math.round(gap) }} pontos à frente</b> do avanço físico. Vale conferir se há material comprado e ainda não aplicado, ou se o custo está acima do previsto.
-        </v-alert>
-        <v-alert v-else-if="gap != null && gap < -10" type="info" variant="tonal" density="compact" class="mb-4">
-          O avanço físico está {{ Math.round(-gap) }} pontos à frente do gasto: pode haver notas ainda não lançadas.
-        </v-alert>
         <StageTimeline labels :stages="field.stages" :schedule="sched" />
       </template>
     </v-card>
@@ -342,6 +338,17 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
+}
+.gauge-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.gauge-pair {
+  display: flex;
+  gap: 24px;
+  flex: none;
 }
 .stat-row {
   display: grid;

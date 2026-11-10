@@ -15,6 +15,7 @@ const props = defineProps<{
 }>()
 
 const SHADES = ['var(--oo-data-1)', 'var(--oo-data-2)', 'var(--oo-data-3)', 'var(--oo-data-4)', 'var(--oo-data-5)']
+const fade = (c: string) => `linear-gradient(90deg, ${c} 0%, color-mix(in srgb, ${c} 55%, #fff) 100%)`
 const rows = computed(() => {
   const list = props.items.filter((i) => i.amount > 0).sort((a, b) => b.amount - a.amount)
   const max = list.length ? list[0].amount : 1
@@ -37,7 +38,7 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
         <span class="money bar-amount">{{ brl(r.amount) }}</span>
       </div>
       <div class="bar-track">
-        <span class="bar-fill" :style="{ width: r.width + '%', background: r.color }" />
+        <span class="bar-fill" :style="{ width: r.width + '%', background: fade(r.color) }" />
       </div>
       <div v-if="rows.length > 1" class="bar-foot muted">{{ r.share }} de cada 100 reais gastos</div>
     </div>
@@ -54,7 +55,7 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
   padding: 8px 0;
 }
 .bar-row + .bar-row {
-  border-top: 1px solid var(--oo-border);
+  border-top: 1px solid var(--oo-line);
 }
 .bar-head {
   display: flex;
@@ -73,14 +74,14 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
 }
 .bar-track {
   height: 10px;
-  border-radius: 4px;
-  background: #f1f4f2;
+  border-radius: 999px;
+  background: var(--oo-track);
   overflow: hidden;
 }
 .bar-fill {
   display: block;
   height: 100%;
-  border-radius: 0 4px 4px 0;
+  border-radius: 999px;
 }
 .bar-foot {
   font-size: var(--oo-fs-micro);
@@ -92,7 +93,7 @@ const total = computed(() => rows.value.reduce((a, b) => a + b.amount, 0))
   gap: 16px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 2px solid var(--oo-text);
+  border-top: 1.5px solid var(--oo-border);
   font-size: var(--oo-fs-body);
 }
 </style>

@@ -21,19 +21,19 @@ const parts = computed(() => {
 <template>
   <div>
     <div class="stack-bar" role="img" :aria-label="`Pago ${brl(paid)}, ainda falta pagar ${brl(open)}, sobra do orçamento ${brl(parts.rest)}`">
-      <span :style="{ width: parts.paid + '%', background: 'var(--oo-data-1)' }" />
-      <span :style="{ width: parts.open + '%', background: 'var(--oo-attention)' }" />
+      <span :style="{ width: parts.paid + '%', background: 'linear-gradient(90deg,var(--oo-primary-deep),var(--oo-primary))' }" />
+      <span :style="{ width: parts.open + '%', background: 'linear-gradient(90deg,var(--oo-orange),#f8a94d)' }" />
     </div>
 
     <div v-if="legend && columns" class="legend-tight">
-      <div><span class="legend-dot" style="background: var(--oo-data-1)" />Já pago<b class="money">{{ brl(paid) }}</b></div>
-      <div><span class="legend-dot" style="background: var(--oo-attention)" />Falta pagar<b class="money">{{ brl(open) }}</b></div>
+      <div><span class="legend-dot" style="background: var(--oo-primary)" />Já pago<b class="money">{{ brl(paid) }}</b></div>
+      <div><span class="legend-dot" style="background: var(--oo-orange)" />Falta pagar<b class="money">{{ brl(open) }}</b></div>
       <div class="rest"><span class="legend-dot" style="background: var(--oo-track)" />Sobra do orçamento<b class="money">{{ brl(parts.rest) }}</b></div>
     </div>
 
     <div v-else-if="legend" class="legend-rows">
-      <div><span class="legend-dot" style="background: var(--oo-data-1)" />Já pago<b class="money">{{ brl(paid) }}</b></div>
-      <div><span class="legend-dot" style="background: var(--oo-attention)" />Ainda falta pagar<b class="money">{{ brl(open) }}</b></div>
+      <div><span class="legend-dot" style="background: var(--oo-primary)" />Já pago<b class="money">{{ brl(paid) }}</b></div>
+      <div><span class="legend-dot" style="background: var(--oo-orange)" />Ainda falta pagar<b class="money">{{ brl(open) }}</b></div>
       <div><span class="legend-dot" style="background: var(--oo-track)" />Sobra do orçamento<b class="money">{{ brl(parts.rest) }}</b></div>
     </div>
   </div>
@@ -64,7 +64,7 @@ const parts = computed(() => {
 }
 .legend-tight .rest {
   padding-top: 7px;
-  border-top: 1px solid var(--oo-border);
+  border-top: 1px solid var(--oo-line);
 }
 
 .legend-rows {

@@ -137,8 +137,8 @@ function logout() {
       </v-main>
     </template>
     <template v-else>
-      <v-navigation-drawer v-model="drawer" color="secondary" width="232" :permanent="mdAndUp" class="sidebar">
-        <div class="pa-5 pb-4"><AppLogo light /></div>
+      <v-navigation-drawer v-model="drawer" color="surface" width="236" :permanent="mdAndUp" class="sidebar" border="0">
+        <div class="pa-5 pb-4"><AppLogo /></div>
         <v-list nav density="comfortable" class="px-3">
           <v-list-item
             v-for="item in visibleNav"
@@ -147,7 +147,7 @@ function logout() {
             :exact="item.to === '/'"
             :prepend-icon="item.icon"
             :title="item.title"
-            rounded="lg"
+            rounded="pill"
             class="nav-item mb-1"
             active-class="nav-active"
           />
@@ -292,24 +292,33 @@ function logout() {
   border-bottom: 1px solid #f3dcb0;
 }
 .appbar {
-  border-bottom: 1px solid var(--oo-border) !important;
+  border-bottom: 1px solid var(--oo-line) !important;
+}
+/* barra lateral clara: o item ativo é uma pílula verde suave */
+.sidebar {
+  border-right: 1px solid var(--oo-line) !important;
 }
 .sidebar .nav-item {
-  color: rgba(255, 255, 255, 0.82) !important;
-  font-weight: 500;
+  color: var(--oo-muted) !important;
+  font-weight: 600;
+  margin-bottom: 2px;
 }
 .sidebar .nav-item .v-list-item-title {
   font-size: 0.9rem !important;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+.sidebar .nav-item:hover {
+  background: var(--oo-sunken);
 }
 .sidebar .nav-active {
-  background: var(--oo-sidebar-active) !important;
-  color: #fff !important;
+  background: var(--oo-primary-soft) !important;
+  color: var(--oo-primary-deep) !important;
 }
 .sidebar .nav-active .v-icon {
-  color: #2bc48a !important;
+  color: var(--oo-primary) !important;
 }
 .sidebar-foot {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--oo-faint);
 }
 </style>

@@ -1,68 +1,80 @@
+/**
+ * Linguagem visual do OperaIA Obras.
+ * Base clara e arejada: branco sem contorno, sombra macia, canto bem redondo,
+ * número grande e cor forte só onde carrega sentido.
+ */
 :root {
-  --oo-sidebar: #0b2e26;
-  --oo-sidebar-active: #134236;
-  --oo-primary: #0e6b53;
-  --oo-bright: #1fa77a;
-  --oo-accent: #f2a93b;
-  --oo-danger: #e5484d;
-  --oo-bg: #f4f6f5;
-  --oo-border: #e6eae8;
-  --oo-text: #16211d;
-  --oo-muted: #6b7a74;
-  --oo-track: #e9edeb;
+  /* superfícies */
+  --oo-bg: #f3f6f7;
+  --oo-surface: #ffffff;
+  --oo-sunken: #f6f8f9;
+  --oo-border: #eaeef0;
+  --oo-line: #f0f3f4;
 
-  /* leitura: nada abaixo de 14px, porque o sistema é usado por quem lê pouco em tela */
+  /* tinta */
+  --oo-text: #101c1a;
+  --oo-muted: #6e7e7b;
+  --oo-faint: #9aa8a5;
+
+  /* marca e apoio */
+  --oo-primary: #0d9b6c;
+  --oo-primary-deep: #07784f;
+  --oo-primary-soft: #e6f7f0;
+  --oo-orange: #f0871a;
+  --oo-orange-soft: #fff2e2;
+  --oo-blue: #2e7df6;
+  --oo-blue-soft: #e9f1fe;
+  --oo-red: #d93a4c;
+  --oo-red-soft: #fdecee;
+
+  /* dados (conferidos no validador, com rótulo escrito sempre visível) */
+  --oo-data-1: #0d9b6c;
+  --oo-data-2: #2e7df6;
+  --oo-data-3: #f0871a;
+  --oo-data-4: #d93a4c;
+  --oo-data-5: #8b5cf6;
+  --oo-track: #eef2f3;
+
+  /* situação: cor + ícone + palavra, nunca a cor sozinha */
+  --oo-ok: #0d9b6c;
+  --oo-ok-bg: #e6f7f0;
+  --oo-attention: #c26a05;
+  --oo-attention-bg: #fff2e2;
+  --oo-late: #c32c3d;
+  --oo-late-bg: #fdecee;
+
+  /* forma */
+  --oo-r-card: 20px;
+  --oo-r-inner: 13px;
+  --oo-shadow: 0 1px 2px rgba(16, 32, 28, 0.04), 0 10px 28px -12px rgba(16, 32, 28, 0.14);
+  --oo-shadow-lift: 0 2px 6px rgba(16, 32, 28, 0.06), 0 18px 40px -16px rgba(16, 32, 28, 0.22);
+
+  /* leitura */
   --oo-fs-micro: 0.8125rem;
   --oo-fs-body: 0.9375rem;
   --oo-fs-lead: 1rem;
-
-  /* dados: uma só matiz para comparar tamanho (do maior para o menor) */
-  --oo-data-1: #0b5a45;
-  --oo-data-2: #0e8a62;
-  --oo-data-3: #4fb391;
-  --oo-data-4: #9fd3be;
-  --oo-data-5: #d8ebe3;
-
-  /* situação: sempre acompanhada de ícone e palavra, nunca só a cor */
-  --oo-ok: #0e8a62;
-  --oo-ok-bg: #e7f4ef;
-  --oo-attention: #b26a00;
-  --oo-attention-bg: #fdf3e0;
-  --oo-late: #b3261e;
-  --oo-late-bg: #fdeceb;
 }
 
+* {
+  font-feature-settings: 'cv11', 'ss01';
+}
 html,
-body,
+body {
+  background: var(--oo-bg);
+}
 .v-application {
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+  background: var(--oo-bg) !important;
   color: var(--oo-text);
-}
-.v-application .text-h1,
-.v-application .text-h2,
-.v-application .text-h3,
-.v-application .text-h4,
-.v-application .text-h5,
-.v-application .text-h6,
-.v-application .text-subtitle-1,
-.v-application .text-subtitle-2,
-.v-application .text-body-1,
-.v-application .text-body-2,
-.v-application .text-caption,
-.v-application .text-overline,
-.v-application .text-button {
-  font-family: inherit !important;
+  letter-spacing: -0.006em;
 }
 
-.v-card {
-  border-color: var(--oo-border) !important;
-}
-
+/* ---------- tipografia */
 .page-title {
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
 }
 .page-subtitle {
   color: var(--oo-muted);
@@ -70,17 +82,22 @@ body,
   line-height: 1.45;
   max-width: 62ch;
 }
-.card-title {
-  font-size: 1.05rem;
+.card-title,
+.sec-title {
+  font-size: 1.0625rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+}
+.sec-label {
+  font-size: var(--oo-fs-micro);
+  font-weight: 700;
+  color: var(--oo-muted);
 }
 .muted {
   color: var(--oo-muted);
 }
 .money {
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 .kpi-label {
   font-size: var(--oo-fs-body);
@@ -88,26 +105,24 @@ body,
   font-weight: 500;
   line-height: 1.3;
 }
-.kpi-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+.kpi-value,
+.big-num {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
+  line-height: 1.08;
 }
 .link {
   color: var(--oo-primary);
   font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
   cursor: pointer;
   font-size: var(--oo-fs-body);
 }
 .link:hover {
-  text-decoration-thickness: 2px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-
-/* nenhum texto do sistema abaixo de 14px */
 .v-application .text-caption {
   font-size: var(--oo-fs-micro) !important;
   line-height: 1.4;
@@ -117,78 +132,143 @@ body,
   line-height: 1.5;
 }
 
-/* toda ação que a pessoa aperta tem altura de dedo e palavra escrita */
+/* ---------- cartões: branco, sem contorno, sombra macia */
+.v-application .v-card {
+  border: 0 !important;
+  border-radius: var(--oo-r-card) !important;
+  box-shadow: var(--oo-shadow) !important;
+  background: var(--oo-surface);
+}
+.panel {
+  min-width: 0;
+  background: var(--oo-surface);
+  border-radius: var(--oo-r-card);
+  box-shadow: var(--oo-shadow);
+  padding: 20px 22px 22px;
+}
+.panel-sunken {
+  background: var(--oo-sunken);
+  border-radius: var(--oo-r-inner);
+  padding: 14px 16px;
+}
+
+/* ---------- botões e campos */
 .v-application .v-btn {
   letter-spacing: 0;
   font-weight: 600;
+  text-transform: none;
 }
 .v-application .v-btn--size-default {
-  min-height: 40px;
+  min-height: 42px;
+  padding-inline: 18px;
+}
+.v-application .v-btn--variant-flat {
+  box-shadow: 0 6px 16px -8px rgba(13, 155, 108, 0.75);
+}
+.v-application .v-field {
+  border-radius: 12px;
 }
 
-/* painel de destaque: o número que responde a pergunta da tela */
-.lead-panel {
-  background: var(--oo-ok-bg);
-  border: 1px solid #cfe6dc;
-  border-left: 5px solid var(--oo-primary);
-  border-radius: 4px 14px 14px 4px;
-  padding: 16px 18px;
-}
-.lead-value {
-  font-size: clamp(1.5rem, 3vw, 1.75rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
-/* situação: cor + ícone + palavra */
+/* ---------- situação e etiquetas */
 .state {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: var(--oo-fs-micro);
   font-weight: 600;
-  padding: 3px 9px;
+  padding: 4px 11px;
   border-radius: 999px;
+  white-space: nowrap;
 }
 .state-ok {
-  color: #0a5c43;
+  color: var(--oo-primary-deep);
   background: var(--oo-ok-bg);
 }
 .state-attention {
-  color: #7d4a00;
+  color: var(--oo-attention);
   background: var(--oo-attention-bg);
 }
 .state-late {
-  color: #8c1d17;
+  color: var(--oo-late);
   background: var(--oo-late-bg);
 }
+.tag {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--oo-muted);
+  background: var(--oo-sunken);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
 
-/* barra empilhada pago / a pagar / restante */
+/* variação para cima ou para baixo, como nas referências */
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--oo-fs-micro);
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.delta-up {
+  color: var(--oo-attention);
+  background: var(--oo-orange-soft);
+}
+.delta-down {
+  color: var(--oo-primary-deep);
+  background: var(--oo-ok-bg);
+}
+.delta-flat {
+  color: var(--oo-muted);
+  background: var(--oo-sunken);
+}
+
+/* botãozinho de abrir no canto do cartão */
+.open-corner {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--oo-sunken);
+  color: var(--oo-muted);
+  cursor: pointer;
+  flex: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.open-corner:hover {
+  background: var(--oo-primary-soft);
+  color: var(--oo-primary);
+}
+
+/* ---------- barras */
 .stack-bar {
   display: flex;
   height: 10px;
   border-radius: 999px;
-  background: var(--oo-track);
   overflow: hidden;
+  background: var(--oo-track);
+  gap: 2px;
 }
 .stack-bar > span {
   display: block;
-  height: 100%;
+  border-radius: 999px;
 }
 .legend-dot {
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 6px;
-  vertical-align: middle;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  margin-right: 7px;
+  flex: none;
 }
 
+/* ---------- tabelas */
 .v-data-table th {
-  font-weight: 600 !important;
   color: var(--oo-muted) !important;
+  font-weight: 600 !important;
   font-size: var(--oo-fs-micro) !important;
   white-space: nowrap;
 }
@@ -198,59 +278,19 @@ body,
 }
 .v-data-table td,
 .v-data-table th {
-  padding-top: 7px !important;
-  padding-bottom: 7px !important;
-}
-.clickable-rows tbody tr {
-  cursor: pointer;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  border-color: var(--oo-line) !important;
 }
 
-.v-switch .v-label {
-  white-space: nowrap;
-}
-
-/* impressão / salvar em PDF: só o conteúdo da página */
-.print-only {
-  display: none;
-}
+/* ---------- impressão */
 @media print {
-  @page {
-    size: A4 landscape;
-    margin: 12mm;
-  }
   .v-navigation-drawer,
   .v-app-bar,
-  .no-print,
-  .demo-bar,
-  .support-bar {
+  .no-print {
     display: none !important;
-  }
-  .print-only {
-    display: block !important;
   }
   .v-main {
     padding: 0 !important;
   }
-  .v-card {
-    box-shadow: none !important;
-    border: 1px solid #ddd;
-  }
-  tr {
-    break-inside: avoid;
-  }
-  body,
-  .v-application {
-    background: #fff !important;
-  }
-  * {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-}
-
-/* rótulo de seção dentro de uma tela (menor que o título do cartão) */
-.sec-label {
-  font-size: var(--oo-fs-micro);
-  font-weight: 700;
-  color: var(--oo-muted);
 }

@@ -131,7 +131,7 @@ const STATE_LABEL: Record<State, string> = { done: 'pronta', doing: 'fazendo ago
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: var(--oo-data-2);
+  background: var(--oo-primary);
 }
 .dot-wrap {
   position: relative;
@@ -152,15 +152,15 @@ const STATE_LABEL: Record<State, string> = { done: 'pronta', doing: 'fazendo ago
   height: 18px;
   border-radius: 50%;
   background: var(--oo-track);
-  box-shadow: 0 0 0 3px #fff;
+  box-shadow: 0 0 0 3px var(--oo-surface);
   flex: none;
 }
 .dot-done {
-  background: var(--oo-data-2);
+  background: var(--oo-primary);
 }
 .dot-doing {
-  background: var(--oo-attention);
-  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--oo-attention-bg);
+  background: var(--oo-orange);
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--oo-orange-soft);
 }
 .dot-label {
   position: absolute;
@@ -187,9 +187,9 @@ const STATE_LABEL: Record<State, string> = { done: 'pronta', doing: 'fazendo ago
   gap: 12px;
   margin-top: 14px;
   padding: 10px 12px;
-  border: 1px solid var(--oo-border);
-  border-radius: 10px;
-  background: #fbfcfc;
+  border: 0;
+  border-radius: var(--oo-r-inner);
+  background: var(--oo-sunken);
   font-size: var(--oo-fs-micro);
 }
 </style>
