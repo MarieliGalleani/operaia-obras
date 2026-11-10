@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import ActionTiles from '@/components/ActionTiles.vue'
 import AlertItem from '@/components/AlertItem.vue'
 import BarList from '@/components/BarList.vue'
-import PayableChip from '@/components/PayableChip.vue'
 import PeriodPicker from '@/components/PeriodPicker.vue'
 import ProjectThumb from '@/components/ProjectThumb.vue'
 import StackBar from '@/components/StackBar.vue'
 import { api } from '@/lib/api'
-import { brl, categoryLabel, date, pct } from '@/lib/format'
+import { brl, categoryLabel, dueLabel, dueState, pct } from '@/lib/format'
 import { currentMonth } from '@/lib/period'
 import { toast, toastError } from '@/lib/toast'
 
@@ -59,6 +59,14 @@ const costItems = computed(() => (data.value?.costsByCategory ?? []).map((c) => 
 const lateCount = computed(() => (data.value?.upcomingPayables ?? []).filter((t) => new Date(t.dueDate) < new Date()).length)
 const bills = computed(() => (data.value?.upcomingPayables ?? []).slice(0, 6))
 const alerts = computed(() => (data.value?.alerts ?? []).slice(0, 5))
+const SHORTCUTS = [
+  { key: 'notas', label: 'Conferir notas', hint: 'Aprovar o que chegou', icon: 'mdi-file-check-outline', tone: 'primary' as const },
+  { key: 'compras', label: 'Nova compra', hint: 'Pedido para um fornecedor', icon: 'mdi-cart-outline', tone: 'primary' as const },
+  { key: 'contas', label: 'Pagar contas', hint: 'Títulos em aberto', icon: 'mdi-cash-clock', tone: 'attention' as const },
+  { key: 'obras', label: 'Ver obras', hint: 'Custo e avanço de cada uma', icon: 'mdi-home-city-outline', tone: 'primary' as const },
+  { key: 'relatorios', label: 'Relatórios', hint: 'Fechamento e planilhas', icon: 'mdi-chart-box-outline', tone: 'primary' as const },
+]
+const SHORTCUT_TO: Record<string, string> = { notas: '/notas-fiscais', compras: '/compras', contas: '/contas-a-pagar', obras: '/obras', relatorios: '/relatorios' }
 const stateOf = (p: number) => (p >= 90 ? 'late' : p >= 75 ? 'attention' : 'ok')
 const ICON = { late: 'mdi-alert-circle', attention: 'mdi-alert', ok: 'mdi-check-circle' }
 
@@ -162,7 +170,12 @@ function openAlert(a: Dashboard['alerts'][number]) {
       <div v-if="!data.projects.length" class="muted">Nenhuma obra em andamento. <router-link class="link" to="/obras">Cadastrar a primeira obra</router-link></div>
     </div>
 
-    <!-- rodapé em três colunas que terminam juntas -->
+    <div class="sec-head"><h2 class="sec-title">Ações rápidas</h2></div>
+    <div class="mb-5" style="margin-top: 10px">
+      <ActionTiles :actions="SHORTCUTS" @run="(k) => router.push(SHORTCUT_TO[k])" />
+    </div>
+
+    <!-- rodapé em duas colunas que terminam juntas -->
     <div class="foot-grid">
       <section class="panel">
         <div class="sec-head">
@@ -173,13 +186,14 @@ function openAlert(a: Dashboard['alerts'][number]) {
         <div v-for="t in bills" :key="t.id" class="bill">
           <div style="min-width: 0">
             <div class="bill-name">{{ t.supplierName }}</div>
-            <div class="muted" style="font-size: var(--oo-fs-micro)">
-              vence {{ date(t.dueDate) }}<template v-if="t.projectNames"> · {{ t.projectNames }}</template>
+            <div class="bill-due">
+              <span class="state" :class="`state-${dueState(t.dueDate)}`">{{ dueLabel(t.dueDate) }}</span>
+              <span v-if="t.projectNames" class="muted">{{ t.projectNames }}</span>
             </div>
           </div>
           <div class="text-right">
             <div class="money font-weight-bold">{{ brl(t.amount - t.paidAmount) }}</div>
-            <PayableChip :status="t.status" :due-date="t.dueDate" />
+            <div v-if="t.paidAmount > 0" class="muted" style="font-size: 0.6875rem">paga em parte</div>
           </div>
         </div>
         <div v-if="!bills.length" class="state state-ok mt-2"><v-icon size="16">mdi-check-circle</v-icon>Nada a pagar nos próximos 30 dias</div>
@@ -393,6 +407,18 @@ function openAlert(a: Dashboard['alerts'][number]) {
 }
 .bill + .bill {
   border-top: 1px solid var(--oo-border);
+}
+.bill-due {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+  font-size: var(--oo-fs-micro);
+}
+.bill-due .state {
+  font-size: 0.6875rem;
+  padding: 2px 8px;
 }
 .bill-name {
   font-weight: 600;

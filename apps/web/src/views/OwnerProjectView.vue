@@ -7,6 +7,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import KpiCard from '@/components/KpiCard.vue'
 import MeasurementPreview from '@/components/MeasurementPreview.vue'
+import StageTimeline from '@/components/StageTimeline.vue'
 import { api } from '@/lib/api'
 import { DEMO } from '@/lib/demo'
 import { brl, categoryLabel, date } from '@/lib/format'
@@ -168,13 +169,7 @@ onMounted(load)
         </v-window-item>
 
         <v-window-item value="etapas" class="pa-4">
-          <div v-for="s in data.stages" :key="s.name" class="stage">
-            <div class="d-flex justify-space-between text-body-2 mb-1">
-              <span>{{ s.name }}</span><span class="font-weight-medium">{{ s.progress }}%</span>
-            </div>
-            <v-progress-linear :model-value="s.progress" color="primary" bg-color="#E9EDEB" bg-opacity="1" height="8" rounded />
-          </div>
-          <div v-if="!data.stages.length" class="muted text-center py-6">A construtora ainda não cadastrou as etapas desta obra.</div>
+          <StageTimeline labels :stages="data.stages" />
         </v-window-item>
       </v-window>
     </v-card>

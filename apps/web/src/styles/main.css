@@ -247,3 +247,10 @@ body,
     print-color-adjust: exact;
   }
 }
+
+/* rótulo de seção dentro de uma tela (menor que o título do cartão) */
+.sec-label {
+  font-size: var(--oo-fs-micro);
+  font-weight: 700;
+  color: var(--oo-muted);
+}

@@ -1,20 +1,40 @@
 <script setup lang="ts">
-import { SEVERITY } from '@/lib/format'
+/**
+ * Um achado do sistema vira tarefa: diz o assunto, o quanto pesa e o que fazer agora.
+ * Sem o botão, o alerta só informa; com ele, a pessoa resolve sem procurar a tela certa.
+ */
+import { computed } from 'vue'
+import { IMPACT, SEVERITY, alertTopic } from '@/lib/format'
 
-defineProps<{ alert: { id: string; severity: string; title: string; message: string; documentId?: string | null; projectId?: string | null }; compact?: boolean }>()
+const props = defineProps<{
+  alert: { id: string; type?: string | null; severity: string; title: string; message: string; documentId?: string | null; projectId?: string | null }
+  compact?: boolean
+}>()
 defineEmits<{ open: [] }>()
+
+const impact = computed(() => IMPACT[props.alert.severity] ?? IMPACT.INFO)
+const action = computed(() =>
+  props.alert.documentId ? { label: 'Abrir a nota', icon: 'mdi-file-document-outline' } : props.alert.projectId ? { label: 'Abrir a obra', icon: 'mdi-home-city-outline' } : { label: 'Ver detalhe', icon: 'mdi-arrow-right' },
+)
 </script>
 
 <template>
-  <div class="alert-item" :class="`sev-${alert.severity}`" @click="$emit('open')">
-    <v-avatar :color="SEVERITY[alert.severity]?.color" variant="tonal" size="34" rounded="lg">
-      <v-icon size="19">{{ SEVERITY[alert.severity]?.icon }}</v-icon>
+  <div class="alert-item" :class="`sev-${alert.severity}`">
+    <v-avatar :color="SEVERITY[alert.severity]?.color" variant="tonal" size="30" rounded="lg">
+      <v-icon size="17">{{ SEVERITY[alert.severity]?.icon }}</v-icon>
     </v-avatar>
     <div class="flex-grow-1" style="min-width: 0">
-      <div class="font-weight-medium text-body-2">{{ alert.title }}</div>
-      <div class="text-caption muted" :class="{ 'text-truncate': compact }">{{ alert.message }}</div>
+      <div class="tags">
+        <span class="tag">{{ alertTopic(alert.type) }}</span>
+        <span class="state" :class="impact.cls">{{ impact.label }}</span>
+      </div>
+      <div class="font-weight-bold a-title">{{ alert.title }}</div>
+      <div class="muted a-msg" :class="{ 'text-truncate': compact }">{{ alert.message }}</div>
     </div>
-    <slot />
+    <div class="a-side">
+      <slot />
+      <v-btn size="small" variant="tonal" color="primary" :prepend-icon="action.icon" @click.stop="$emit('open')">{{ action.label }}</v-btn>
+    </div>
   </div>
 </template>
 
@@ -22,15 +42,56 @@ defineEmits<{ open: [] }>()
 .alert-item {
   min-width: 0;
   display: flex;
-  gap: 12px;
+  gap: 11px;
   align-items: flex-start;
-  padding: 10px 12px;
+  padding: 11px 12px;
   border: 1px solid var(--oo-border);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.15s;
+  border-radius: 12px;
+  background: #fff;
 }
 .alert-item:hover {
-  background: #f8faf9;
+  border-color: #cfdad5;
+}
+.tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.tag {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--oo-muted);
+  background: var(--oo-track);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.tags .state {
+  font-size: 0.6875rem;
+  padding: 2px 8px;
+}
+.a-title {
+  font-size: var(--oo-fs-body);
+  line-height: 1.25;
+}
+.a-msg {
+  font-size: var(--oo-fs-micro);
+  line-height: 1.35;
+}
+.a-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+@media (max-width: 700px) {
+  .alert-item {
+    flex-wrap: wrap;
+  }
+  .a-side {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 </style>

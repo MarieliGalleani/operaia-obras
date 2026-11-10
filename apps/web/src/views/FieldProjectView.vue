@@ -3,6 +3,8 @@
  * App de obra: tudo o que o mestre faz numa obra, em uma tela de celular.
  * Pedir material · Receber entrega · Foto · Ocorrência · Avanço físico. Sem valores em dinheiro.
  */
+import ActionTiles from '@/components/ActionTiles.vue'
+import StageTimeline from '@/components/StageTimeline.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
@@ -375,12 +377,19 @@ async function saveStage() {
 
 const viewer = ref<string | null>(null)
 const ACTIONS = computed(() => [
-  { key: 'material', label: 'Pedir material', icon: 'mdi-cart-plus', color: 'primary', run: openRequest },
-  { key: 'entrega', label: 'Receber entrega', icon: 'mdi-truck-check-outline', color: 'info', run: () => openReceive(), badge: openDeliveries.value.length },
-  { key: 'foto', label: 'Foto', icon: 'mdi-camera-outline', color: 'secondary', run: takePhoto },
-  { key: 'ocorrencia', label: 'Ocorrência', icon: 'mdi-alert-octagon-outline', color: 'error', run: openOccurrence, badge: openOcc.value.length },
-  { key: 'avanco', label: 'Avanço', icon: 'mdi-progress-check', color: 'success', run: () => (tab.value = 'avanco') },
+  { key: 'material', label: 'Pedir material', hint: 'O escritório compra e manda', icon: 'mdi-cart-plus', tone: 'primary' as const },
+  { key: 'entrega', label: 'Receber entrega', hint: 'Confirmar o que chegou na obra', icon: 'mdi-truck-check-outline', tone: 'attention' as const, badge: openDeliveries.value.length },
+  { key: 'foto', label: 'Tirar foto', hint: 'Registrar como está hoje', icon: 'mdi-camera-outline', tone: 'primary' as const },
+  { key: 'ocorrencia', label: 'Registrar ocorrência', hint: 'Avisar problema que travou o serviço', icon: 'mdi-alert-octagon-outline', tone: 'late' as const, badge: openOcc.value.length },
+  { key: 'avanco', label: 'Atualizar avanço', hint: 'Dizer quanto de cada etapa já foi', icon: 'mdi-progress-check', tone: 'primary' as const },
 ])
+function runAction(key: string) {
+  if (key === 'material') openRequest()
+  else if (key === 'entrega') openReceive()
+  else if (key === 'foto') takePhoto()
+  else if (key === 'ocorrencia') openOccurrence()
+  else if (key === 'avanco') tab.value = 'avanco'
+}
 </script>
 
 <template>
@@ -424,13 +433,9 @@ const ACTIONS = computed(() => [
         </div>
       </v-card>
 
-      <div class="actions mb-4">
-        <button v-for="a in ACTIONS" :key="a.key" type="button" class="action" @click="a.run()">
-          <v-badge :model-value="!!a.badge" :content="a.badge" color="error" floating>
-            <v-icon :color="a.color" size="30">{{ a.icon }}</v-icon>
-          </v-badge>
-          <span>{{ a.label }}</span>
-        </button>
+      <div class="mb-4">
+        <div class="sec-label mb-2">O que você quer fazer</div>
+        <ActionTiles :actions="ACTIONS" @run="runAction" />
       </div>
 
       <v-tabs v-model="tab" show-arrows color="primary" density="comfortable" class="mb-3">
@@ -527,7 +532,10 @@ const ACTIONS = computed(() => [
       <!-- AVANÇO -->
       <template v-else-if="tab === 'avanco'">
         <div v-if="!data.stages.length" class="empty">As etapas desta obra ainda não foram cadastradas. Peça ao escritório para cadastrar em Obras → {{ data.project.name }}.</div>
-        <div v-else class="text-caption muted mb-2">Toque na etapa para atualizar o percentual concluído.</div>
+        <template v-else>
+          <v-card class="pa-4 mb-3"><StageTimeline :stages="data.stages" /></v-card>
+          <div class="text-caption muted mb-2">Toque na etapa para atualizar o percentual concluído.</div>
+        </template>
         <v-card v-for="s in data.stages" :key="s.id" class="pa-4 mb-2 stage" @click="openStage(s)">
           <div class="d-flex align-center justify-space-between mb-1">
             <span class="font-weight-medium">{{ s.name }}</span>

@@ -65,3 +65,48 @@ export const SEVERITY: Record<string, { color: string; icon: string; label: stri
   OPORTUNIDADE: { color: 'success', icon: 'mdi-piggy-bank-outline', label: 'Oportunidade' },
 }
 export const SOURCE: Record<string, string> = { UPLOAD: 'Upload', EMAIL: 'E-mail', API: 'Integração', MANUAL: 'Manual' }
+
+/** "vence hoje", "vence em 3 dias", "venceu há 2 dias" — mais fácil de ler que uma data */
+export function daysFromToday(iso?: string | null): number | null {
+  if (!iso) return null
+  const today = new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) + 'T00:00:00')
+  const d = new Date((iso.length > 10 ? iso.slice(0, 10) : iso) + 'T00:00:00')
+  return Math.round((d.getTime() - today.getTime()) / 86_400_000)
+}
+export function dueLabel(iso?: string | null, verb: 'vence' | 'entrega' | 'termina' = 'vence') {
+  const n = daysFromToday(iso)
+  if (n === null) return '—'
+  const past = { vence: 'venceu', entrega: 'era para entregar', termina: 'terminou' }[verb]
+  if (n === 0) return `${verb} hoje`
+  if (n === 1) return `${verb} amanhã`
+  if (n === -1) return `${past} ontem`
+  return n > 0 ? `${verb} em ${n} dias` : `${past} há ${Math.abs(n)} dias`
+}
+/** cor da situação de um prazo: atrasado, perto, tranquilo */
+export const dueState = (iso?: string | null): 'late' | 'attention' | 'ok' => {
+  const n = daysFromToday(iso)
+  if (n === null) return 'ok'
+  return n < 0 ? 'late' : n <= 3 ? 'attention' : 'ok'
+}
+
+/** assunto do alerta, em palavra do dia a dia */
+export const ALERT_TOPIC: Record<string, string> = {
+  ORCAMENTO: 'Orçamento',
+  DUPLICIDADE: 'Nota repetida',
+  PRECO: 'Preço',
+  DADOS: 'Dados da nota',
+  DESTINATARIO: 'Destinatário',
+  OBRA_NAO_IDENTIFICADA: 'Obra',
+  VENCIMENTO: 'Pagamento',
+  ECONOMIA: 'Economia',
+  PEDIDO: 'Compra',
+  OCORRENCIA: 'Obra parada',
+}
+export const alertTopic = (t?: string | null) => (t && ALERT_TOPIC[t]) || 'Conferência'
+/** o quanto pesa, em palavra */
+export const IMPACT: Record<string, { label: string; cls: string }> = {
+  CRITICO: { label: 'Resolver hoje', cls: 'state-late' },
+  ATENCAO: { label: 'Fica de olho', cls: 'state-attention' },
+  INFO: { label: 'Só para saber', cls: 'state-ok' },
+  OPORTUNIDADE: { label: 'Dá para economizar', cls: 'state-ok' },
+}

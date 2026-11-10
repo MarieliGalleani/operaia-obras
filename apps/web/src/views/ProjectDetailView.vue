@@ -7,8 +7,11 @@ import KpiCard from '@/components/KpiCard.vue'
 import ProjectOwnerTab from '@/components/ProjectOwnerTab.vue'
 import ProjectThumb from '@/components/ProjectThumb.vue'
 import StackBar from '@/components/StackBar.vue'
+import StatGroup from '@/components/StatGroup.vue'
+import StageTimeline from '@/components/StageTimeline.vue'
 import { api } from '@/lib/api'
 import { CATEGORIES, DOC_STATUS, PAYABLE_STATUS, brl, categoryColor, date, pct } from '@/lib/format'
+import { schedule } from '@/lib/schedule'
 import { toast, toastError } from '@/lib/toast'
 import { useAuth } from '@/stores/auth'
 
@@ -18,6 +21,8 @@ interface Detail {
   name: string
   address: string | null
   status: string
+  startDate: string | null
+  endDate: string | null
   budgetTotal: number
   imageUrl: string | null
   financials: { budget: number; appropriated: number; paid: number; open: number; committedPct: number; byCategory: Record<string, { budget: number; appropriated: number }> }
@@ -58,6 +63,7 @@ const categories = computed(() => {
   return CATEGORIES.map((c) => ({ ...c, budget: by[c.value]?.budget ?? 0, appropriated: by[c.value]?.appropriated ?? 0 })).filter((c) => c.budget || c.appropriated)
 })
 const auth = useAuth()
+const sched = computed(() => schedule(data.value?.startDate, data.value?.endDate, field.value?.physicalPct ?? null))
 const canEdit = computed(() => auth.canDo('editar_obras'))
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
@@ -146,22 +152,27 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
       </div>
     </div>
 
-    <v-row dense class="mb-2">
-      <v-col cols="6" md="3"><KpiCard label="Orçamento" :value="brl(data.budgetTotal, { compact: true })" /></v-col>
-      <v-col cols="6" md="3"><KpiCard label="Pago" :value="brl(data.financials.paid, { compact: true })" /></v-col>
-      <v-col cols="6" md="3"><KpiCard label="A pagar" :value="brl(data.financials.open, { compact: true })" /></v-col>
-      <v-col cols="6" md="3">
-        <KpiCard label="Saldo do orçamento" :value="brl(balance, { compact: true })" :value-color="balance < 0 ? 'error' : undefined" :hint="`${pct(data.financials.committedPct)} comprometido`" :hint-color="data.financials.committedPct >= 90 ? 'error' : undefined" />
-      </v-col>
-    </v-row>
+    <div class="stat-row mb-3">
+      <StatGroup
+        title="Dinheiro desta obra"
+        :items="[
+          { label: 'Orçamento', value: brl(data.budgetTotal) },
+          { label: 'Já pago', value: brl(data.financials.paid) },
+          { label: 'Ainda falta pagar', value: brl(data.financials.open), tone: 'attention' },
+        ]"
+      />
+      <StatGroup
+        title="Como está a obra"
+        :items="[
+          { label: 'do orçamento usado', value: pct(data.financials.committedPct), tone: data.financials.committedPct >= 90 ? 'late' : data.financials.committedPct >= 75 ? 'attention' : 'ok' },
+          { label: 'da obra pronta', value: field?.physicalPct == null ? '—' : pct(field.physicalPct) },
+          { label: 'achados abertos', value: String(data.alerts.length), tone: data.alerts.length ? 'attention' : 'ok' },
+        ]"
+      />
+    </div>
 
-    <v-card class="pa-5 mb-4">
-      <StackBar :paid="data.financials.paid" :open="data.financials.open" :budget="data.budgetTotal" style="height: 12px" />
-      <div class="text-caption muted mt-2">
-        <span class="mr-4"><span class="legend-dot" style="background: var(--oo-bright)" />Pago</span>
-        <span class="mr-4"><span class="legend-dot" style="background: var(--oo-accent)" />A pagar</span>
-        <span><span class="legend-dot" style="background: var(--oo-track)" />Saldo</span>
-      </div>
+    <v-card class="pa-4 mb-4">
+      <StackBar legend :paid="data.financials.paid" :open="data.financials.open" :budget="data.budgetTotal" />
     </v-card>
 
     <v-card class="pa-5 mb-4">
@@ -193,13 +204,7 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
         <v-alert v-else-if="gap != null && gap < -10" type="info" variant="tonal" density="compact" class="mb-4">
           O avanço físico está {{ Math.round(-gap) }} pontos à frente do gasto: pode haver notas ainda não lançadas.
         </v-alert>
-        <div class="stages">
-          <div v-for="s in field.stages" :key="s.id" class="stage-row">
-            <span class="text-body-2 text-truncate">{{ s.name }}</span>
-            <v-progress-linear :model-value="s.progress" :color="s.progress === 100 ? 'success' : 'primary'" bg-color="grey-lighten-2" height="8" rounded />
-            <b class="text-body-2 text-right">{{ s.progress }}%</b>
-          </div>
-        </div>
+        <StageTimeline labels :stages="field.stages" :schedule="sched" />
       </template>
     </v-card>
 
@@ -337,6 +342,11 @@ const balance = computed(() => (data.value ? data.value.budgetTotal - data.value
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
+}
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
 }
 .stages {
   display: grid;

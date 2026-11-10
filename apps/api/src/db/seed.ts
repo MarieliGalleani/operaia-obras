@@ -58,10 +58,10 @@ const CATALOG: Record<SupplierKey, { description: string; ncm: string; unit: str
 }
 
 const PROJECTS = [
-  { code: 'OBR-001', name: 'Residencial Aurora', address: 'Rua das Acácias, 450 — São Carlos/SP', budget: 1_200_000, spend: 935_000 },
-  { code: 'OBR-002', name: 'Edifício Horizonte', address: 'Av. São Carlos, 2100 — São Carlos/SP', budget: 850_000, spend: 712_000 },
-  { code: 'OBR-003', name: 'Casa Jardim', address: 'Rua Jardim Botânico, 88 — Ibaté/SP', budget: 480_000, spend: 452_000 },
-  { code: 'OBR-004', name: 'Galpão Logístico Ibaté', address: 'Rod. SP-215, km 4 — Ibaté/SP', budget: 2_300_000, spend: 310_000 },
+  { code: 'OBR-001', name: 'Residencial Aurora', address: 'Rua das Acácias, 450 — São Carlos/SP', budget: 1_200_000, spend: 935_000, daysToEnd: 110 },
+  { code: 'OBR-002', name: 'Edifício Horizonte', address: 'Av. São Carlos, 2100 — São Carlos/SP', budget: 850_000, spend: 712_000, daysToEnd: 60 },
+  { code: 'OBR-003', name: 'Casa Jardim', address: 'Rua Jardim Botânico, 88 — Ibaté/SP', budget: 480_000, spend: 452_000, daysToEnd: 35 },
+  { code: 'OBR-004', name: 'Galpão Logístico Ibaté', address: 'Rod. SP-215, km 4 — Ibaté/SP', budget: 2_300_000, spend: 310_000, daysToEnd: 400 },
 ]
 
 /** Participação de cada categoria no custo e fornecedores que a atendem */
@@ -215,6 +215,8 @@ async function main() {
         address: p.address,
         budgetTotal: p.budget * 100,
         startDate: new Date(`${dayISO(160)}T12:00:00-03:00`),
+        // prazo de entrega: dá sentido à régua de prazo da obra (dia X de Y)
+        endDate: new Date(`${dayISO(-(p.daysToEnd ?? 200))}T12:00:00-03:00`),
       })
       .returning()
     await db.insert(projectBudgets).values(
