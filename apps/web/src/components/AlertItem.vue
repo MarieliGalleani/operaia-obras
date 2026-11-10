@@ -20,6 +20,7 @@ defineEmits<{ open: [] }>()
 
 <style scoped>
 .alert-item {
+  min-width: 0;
   display: flex;
   gap: 12px;
   align-items: flex-start;

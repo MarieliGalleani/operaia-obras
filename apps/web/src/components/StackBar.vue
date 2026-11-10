@@ -1,19 +1,19 @@
 <script setup lang="ts">
 /**
  * Orçamento da obra em três pedaços: já pago, ainda falta pagar e o que sobra.
- * Com legenda escrita e valor em cada pedaço, para não depender de reconhecer cor.
+ * Sempre com legenda escrita e valor, para não depender de reconhecer cor.
+ * `columns` arruma a legenda em duas colunas (cabe em cartão estreito).
  */
 import { computed } from 'vue'
 import { brl } from '@/lib/format'
 
-const props = defineProps<{ paid: number; open: number; budget: number; legend?: boolean }>()
+const props = defineProps<{ paid: number; open: number; budget: number; legend?: boolean; columns?: boolean }>()
 const parts = computed(() => {
   const total = Math.max(props.budget, props.paid + props.open, 1)
-  const rest = Math.max(props.budget - props.paid - props.open, 0)
   return {
     paid: (props.paid / total) * 100,
     open: (props.open / total) * 100,
-    rest,
+    rest: Math.max(props.budget - props.paid - props.open, 0),
   }
 })
 </script>
@@ -24,7 +24,14 @@ const parts = computed(() => {
       <span :style="{ width: parts.paid + '%', background: 'var(--oo-data-1)' }" />
       <span :style="{ width: parts.open + '%', background: 'var(--oo-attention)' }" />
     </div>
-    <div v-if="legend" class="stack-legend">
+
+    <div v-if="legend && columns" class="legend-tight">
+      <div><span class="legend-dot" style="background: var(--oo-data-1)" />Já pago<b class="money">{{ brl(paid) }}</b></div>
+      <div><span class="legend-dot" style="background: var(--oo-attention)" />Falta pagar<b class="money">{{ brl(open) }}</b></div>
+      <div class="rest"><span class="legend-dot" style="background: var(--oo-track)" />Sobra do orçamento<b class="money">{{ brl(parts.rest) }}</b></div>
+    </div>
+
+    <div v-else-if="legend" class="legend-rows">
       <div><span class="legend-dot" style="background: var(--oo-data-1)" />Já pago<b class="money">{{ brl(paid) }}</b></div>
       <div><span class="legend-dot" style="background: var(--oo-attention)" />Ainda falta pagar<b class="money">{{ brl(open) }}</b></div>
       <div><span class="legend-dot" style="background: var(--oo-track)" />Sobra do orçamento<b class="money">{{ brl(parts.rest) }}</b></div>
@@ -33,19 +40,48 @@ const parts = computed(() => {
 </template>
 
 <style scoped>
-.stack-legend {
+.legend-tight {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 0.8125rem;
+  color: var(--oo-muted);
+}
+.legend-tight > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.legend-tight .legend-dot {
+  flex: none;
+}
+.legend-tight b {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: var(--oo-text);
+}
+.legend-tight .rest {
+  padding-top: 7px;
+  border-top: 1px solid var(--oo-border);
+}
+
+.legend-rows {
   display: grid;
   gap: 4px;
   margin-top: 10px;
   font-size: var(--oo-fs-micro);
 }
-.stack-legend > div {
+.legend-rows > div {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
-.stack-legend b {
+.legend-rows b {
   margin-left: auto;
   font-size: var(--oo-fs-body);
+  white-space: nowrap;
 }
 </style>
