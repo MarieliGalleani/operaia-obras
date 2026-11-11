@@ -137,12 +137,14 @@ async function enter(c: CompanyUsage) {
     </div>
   </div>
 
-  <v-row v-if="data" dense class="mb-2">
-    <v-col cols="6" md><KpiCard label="Construtoras ativas" :value="String(data.companiesActive)" :hint="data.companiesSuspended ? `${data.companiesSuspended} suspensa(s)` : undefined" /></v-col>
-    <v-col cols="6" md><KpiCard label="Pessoas com acesso" :value="String(data.usersActive)" /></v-col>
-    <v-col cols="6" md><KpiCard label="Notas recebidas (30 dias)" :value="data.documents30d.toLocaleString('pt-BR')" /></v-col>
-    <v-col cols="6" md><KpiCard label="Volume aprovado (30 dias)" :value="brl(data.approved30d, { compact: true })" /></v-col>
-  </v-row>
+  <div v-if="data" class="panel mb-4">
+    <v-row dense>
+      <v-col cols="6" md><KpiCard label="Construtoras ativas" :value="String(data.companiesActive)" :hint="data.companiesSuspended ? `${data.companiesSuspended} suspensa(s)` : undefined" icon="mdi-domain" /></v-col>
+      <v-col cols="6" md><KpiCard label="Pessoas com acesso" :value="String(data.usersActive)" icon="mdi-account-group-outline" /></v-col>
+      <v-col cols="6" md><KpiCard label="Notas recebidas (30 dias)" :value="data.documents30d.toLocaleString('pt-BR')" icon="mdi-file-document-outline" /></v-col>
+      <v-col cols="6" md><KpiCard label="Volume aprovado (30 dias)" :value="brl(data.approved30d)" icon="mdi-check-decagram-outline" /></v-col>
+    </v-row>
+  </div>
 
   <v-card>
     <div class="d-flex align-center flex-wrap ga-3 pa-4">

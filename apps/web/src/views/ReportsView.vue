@@ -133,21 +133,24 @@ async function downloadZip(from: string, to: string, key: string) {
     <div class="text-body-2">Período: {{ periodLabel }} · Gerado em {{ new Date().toLocaleString('pt-BR') }} · OperaIA Obras</div>
   </div>
 
-  <v-row dense class="mb-2">
-    <v-col cols="6" md="3"><KpiCard label="Custo no período" :value="brl(data?.total, { compact: true })" :hint="periodLabel" /></v-col>
-    <v-col cols="6" md="3"><KpiCard label="Notas aprovadas" :value="String(data?.documents ?? 0)" :hint="`${data?.byProject.length ?? 0} obra(s) · ${data?.bySupplier.length ?? 0} fornecedor(es)`" /></v-col>
-    <v-col cols="6" md="3">
-      <KpiCard
-        label="Média por mês"
-        :value="brl(months ? (data?.total ?? 0) / months : 0, { compact: true })"
-        :hint="lastChange == null ? `${months} mês(es) com notas` : `último mês ${lastChange > 0 ? '+' : ''}${pct(lastChange)} vs anterior`"
-        :hint-color="lastChange != null && lastChange > 0 ? 'warning' : lastChange != null ? 'success' : undefined"
-      />
-    </v-col>
-    <v-col cols="6" md="3">
-      <KpiCard label="Maior fornecedor" :value="data?.bySupplier[0]?.name ?? '—'" :hint="data?.bySupplier[0] ? `${pct(share(data.bySupplier[0].total))} do custo` : undefined" />
-    </v-col>
-  </v-row>
+  <div class="panel mb-4">
+    <v-row dense>
+      <v-col cols="6" md="3"><KpiCard label="Custo no período" :value="brl(data?.total)" :hint="periodLabel" icon="mdi-currency-brl" /></v-col>
+      <v-col cols="6" md="3"><KpiCard label="Notas aprovadas" :value="String(data?.documents ?? 0)" :hint="`${data?.byProject.length ?? 0} obra(s) · ${data?.bySupplier.length ?? 0} fornecedor(es)`" icon="mdi-file-document-check-outline" /></v-col>
+      <v-col cols="6" md="3">
+        <KpiCard
+          label="Média por mês"
+          :value="brl(months ? (data?.total ?? 0) / months : 0)"
+          :hint="lastChange == null ? `${months} mês(es) com notas` : `último mês ${lastChange > 0 ? '+' : ''}${pct(lastChange)} vs anterior`"
+          :hint-color="lastChange != null && lastChange > 0 ? 'warning' : lastChange != null ? 'success' : undefined"
+          icon="mdi-chart-timeline-variant"
+        />
+      </v-col>
+      <v-col cols="6" md="3">
+        <KpiCard label="Maior fornecedor" :value="data?.bySupplier[0]?.name ?? '—'" :hint="data?.bySupplier[0] ? `${pct(share(data.bySupplier[0].total))} do custo` : undefined" icon="mdi-store-outline" />
+      </v-col>
+    </v-row>
+  </div>
 
   <v-card class="pa-0">
     <v-tabs v-model="tab" color="primary" class="no-print px-2">

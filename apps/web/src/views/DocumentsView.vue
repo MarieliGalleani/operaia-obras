@@ -98,20 +98,16 @@ const worstIssue = (issues: Issue[]) => issues.find((i) => i.severity === 'CRITI
     </div>
   </div>
 
-  <v-card class="pa-5 mb-4">
+  <div class="panel mb-4">
     <DocumentFlow />
-  </v-card>
+  </div>
 
-  <v-row dense class="mb-2">
-    <v-col cols="12">
-      <v-card class="pa-5">
-        <UploadZone @done="load(); tab = 'revisar'" @open="openDoc" />
-      </v-card>
-    </v-col>
-  </v-row>
+  <div class="panel mb-4">
+    <UploadZone @done="load(); tab = 'revisar'" @open="openDoc" />
+  </div>
 
   <v-card>
-    <div class="d-flex align-center flex-wrap ga-3 px-4 pt-3">
+    <div class="d-flex align-center flex-wrap ga-3 px-5 pt-4">
       <v-tabs v-model="tab" color="primary" density="comfortable">
         <v-tab v-for="t in tabs" :key="t.value" :value="t.value" class="text-none">{{ t.title }}</v-tab>
       </v-tabs>

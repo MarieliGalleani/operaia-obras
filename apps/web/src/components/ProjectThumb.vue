@@ -4,11 +4,11 @@ import { computed } from 'vue'
 const props = withDefaults(defineProps<{ name: string; imageUrl?: string | null; size?: number }>(), { size: 56 })
 // paleta estável por nome, para cada obra ter "cara" própria sem precisar de foto
 const palettes = [
-  ['#0E6B53', '#2BC48A'],
-  ['#2D5B9A', '#6FA0E0'],
-  ['#B7791F', '#F2A93B'],
-  ['#5B4B8A', '#9C88D6'],
-  ['#8A4B4B', '#D68888'],
+  ['#07784f', '#0d9b6c'],   // verde — primária
+  ['#1e5ec4', '#2e7df6'],   // azul
+  ['#9e5504', '#d98c2e'],   // âmbar
+  ['#0a6e5c', '#34b89a'],   // cerceta
+  ['#3a4c48', '#5e736e'],   // ardósia
 ]
 const colors = computed(() => palettes[[...props.name].reduce((a, c) => a + c.charCodeAt(0), 0) % palettes.length])
 const initials = computed(() =>
@@ -36,7 +36,7 @@ const initials = computed(() =>
 <style scoped>
 .thumb {
   position: relative;
-  border-radius: 8px;
+  border-radius: var(--oo-r-inner, 14px);
   flex-shrink: 0;
   overflow: hidden;
   display: flex;

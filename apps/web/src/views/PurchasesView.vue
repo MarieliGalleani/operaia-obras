@@ -382,16 +382,18 @@ const supplierItems = computed(() => suppliers.value.map((s) => ({ value: s.id, 
     <v-btn color="primary" prepend-icon="mdi-plus" @click="openNew()">Novo pedido</v-btn>
   </div>
 
-  <v-row dense class="mb-2">
-    <v-col cols="6" md="3"><KpiCard label="Pedidos em aberto" :value="String(kpis.open).padStart(2, '0')" :hint="`${brl(kpis.toReceive, { compact: true })} a receber`" icon="mdi-truck-outline" /></v-col>
-    <v-col cols="6" md="3">
-      <KpiCard label="Entregas atrasadas" :value="String(kpis.late).padStart(2, '0')" :value-color="kpis.late ? 'error' : undefined" hint="passaram da data prometida" icon="mdi-clock-alert-outline" />
-    </v-col>
-    <v-col cols="6" md="3">
-      <KpiCard label="Notas com divergência" :value="String(kpis.divergent).padStart(2, '0')" :value-color="kpis.divergent ? 'warning' : undefined" hint="preço ou quantidade fora do pedido" icon="mdi-scale-unbalanced" />
-    </v-col>
-    <v-col cols="6" md="3"><KpiCard label="Rascunhos" :value="String(kpis.drafts).padStart(2, '0')" hint="aguardando aprovação" icon="mdi-pencil-outline" /></v-col>
-  </v-row>
+  <div class="panel mb-4">
+    <v-row dense>
+      <v-col cols="6" md="3"><KpiCard label="Pedidos em aberto" :value="String(kpis.open).padStart(2, '0')" :hint="`${brl(kpis.toReceive)} a receber`" icon="mdi-truck-outline" /></v-col>
+      <v-col cols="6" md="3">
+        <KpiCard label="Entregas atrasadas" :value="String(kpis.late).padStart(2, '0')" :value-color="kpis.late ? 'error' : undefined" hint="passaram da data prometida" icon="mdi-clock-alert-outline" />
+      </v-col>
+      <v-col cols="6" md="3">
+        <KpiCard label="Notas com divergência" :value="String(kpis.divergent).padStart(2, '0')" :value-color="kpis.divergent ? 'warning' : undefined" hint="preço ou quantidade fora do pedido" icon="mdi-scale-unbalanced" />
+      </v-col>
+      <v-col cols="6" md="3"><KpiCard label="Rascunhos" :value="String(kpis.drafts).padStart(2, '0')" hint="aguardando aprovação" icon="mdi-pencil-outline" /></v-col>
+    </v-row>
+  </div>
 
   <v-card v-if="requests.length" class="pa-4 mb-4 req-card">
     <div class="d-flex align-center ga-2 mb-2">

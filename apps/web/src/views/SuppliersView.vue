@@ -183,7 +183,7 @@ async function create() {
   </v-card>
 
   <v-row dense>
-    <v-col v-for="s in sorted" :key="s.id" cols="12" sm="6" lg="3">
+    <v-col v-for="s in sorted" :key="s.id" cols="12" sm="6" lg="4">
       <v-card class="pa-4 h-100 d-flex flex-column supplier-card" role="button" tabindex="0" @click="openDetail(s)" @keydown.enter="openDetail(s)">
         <div class="d-flex justify-space-between align-start ga-3">
           <v-avatar size="44" :color="s.defaultCategory ? undefined : 'grey-lighten-3'" :style="s.defaultCategory ? { background: categoryColor(s.defaultCategory) + '26' } : {}" rounded="lg">
@@ -206,7 +206,7 @@ async function create() {
           <v-chip v-else :color="STATUS[s.status].color" variant="tonal" :prepend-icon="STATUS[s.status].icon">{{ STATUS[s.status].label }}</v-chip>
           <v-chip v-if="s.defaultCategory" variant="tonal">{{ categoryLabel(s.defaultCategory) }}</v-chip>
         </div>
-        <div v-if="s.topItem" class="price-box mb-3">
+        <div v-if="s.topItem" class="panel-sunken mb-3">
           <div class="text-caption muted text-truncate" :title="s.topItem.description">{{ s.topItem.description }}</div>
           <div class="d-flex align-center ga-2">
             <span class="font-weight-bold money">{{ price(s.topItem.lastPrice) }}</span>
@@ -244,7 +244,7 @@ async function create() {
         <div class="d-flex justify-space-between align-end">
           <div>
             <div class="text-caption muted">Comprado (aprovado)</div>
-            <div class="font-weight-bold money">{{ brl(Number(s.purchasedTotal), { compact: true }) }}</div>
+            <div class="font-weight-bold money">{{ brl(Number(s.purchasedTotal)) }}</div>
           </div>
           <div class="text-right text-caption muted">
             {{ s.documentsCount }} nota(s)<br />

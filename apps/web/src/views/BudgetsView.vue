@@ -164,22 +164,25 @@ async function save() {
     </div>
   </div>
 
-  <v-row dense class="mb-2">
-    <v-col cols="6" md="3"><KpiCard label="Orçamento previsto" :value="brl(totals.budget, { compact: true })" /></v-col>
-    <v-col cols="6" md="3"><KpiCard label="Realizado" :value="brl(totals.spent, { compact: true })" :hint="`${pct(usage(totals.spent, totals.budget))} do previsto`" /></v-col>
-    <v-col cols="6" md="3">
-      <KpiCard label="Saldo" :value="brl(totals.budget - totals.spent, { compact: true })" :value-color="totals.budget - totals.spent < 0 ? 'error' : undefined" />
-    </v-col>
-    <v-col cols="6" md="3">
-      <KpiCard
-        label="Obras no limite"
-        :value="String(totals.over + totals.near).padStart(2, '0')"
-        :value-color="totals.over ? 'error' : totals.near ? 'warning' : undefined"
-        :hint="[totals.over ? `${totals.over} estourada(s)` : '', `${totals.near} acima de 90%`, catOver ? `${catOver} categoria(s) estourada(s)` : ''].filter(Boolean).join(' · ')"
-        :hint-color="totals.over || catOver ? 'error' : undefined"
-      />
-    </v-col>
-  </v-row>
+  <div class="panel mb-4">
+    <v-row dense>
+      <v-col cols="6" md="3"><KpiCard label="Orçamento previsto" :value="brl(totals.budget)" icon="mdi-calculator-variant-outline" /></v-col>
+      <v-col cols="6" md="3"><KpiCard label="Realizado" :value="brl(totals.spent)" :hint="`${pct(usage(totals.spent, totals.budget))} do previsto`" icon="mdi-check-circle-outline" /></v-col>
+      <v-col cols="6" md="3">
+        <KpiCard label="Saldo" :value="brl(totals.budget - totals.spent)" :value-color="totals.budget - totals.spent < 0 ? 'error' : undefined" icon="mdi-wallet-outline" />
+      </v-col>
+      <v-col cols="6" md="3">
+        <KpiCard
+          label="Obras no limite"
+          :value="String(totals.over + totals.near).padStart(2, '0')"
+          :value-color="totals.over ? 'error' : totals.near ? 'warning' : undefined"
+          :hint="[totals.over ? `${totals.over} estourada(s)` : '', `${totals.near} acima de 90%`, catOver ? `${catOver} categoria(s) estourada(s)` : ''].filter(Boolean).join(' · ')"
+          :hint-color="totals.over || catOver ? 'error' : undefined"
+          icon="mdi-alert-outline"
+        />
+      </v-col>
+    </v-row>
+  </div>
 
   <v-card v-if="loading" class="pa-8 d-flex justify-center"><v-progress-circular indeterminate color="primary" /></v-card>
 

@@ -167,11 +167,13 @@ async function pay() {
     </div>
   </div>
 
-  <v-row dense class="mb-2">
-    <v-col cols="12" sm="4"><KpiCard label="Vencido" :value="brl(summary.overdue)" :value-color="summary.overdue ? 'error' : undefined" /></v-col>
-    <v-col cols="12" sm="4"><KpiCard label="Próximos 7 dias" :value="brl(summary.next7)" /></v-col>
-    <v-col cols="12" sm="4"><KpiCard label="Total em aberto (filtro)" :value="brl(summary.total)" /></v-col>
-  </v-row>
+  <div class="panel mb-4">
+    <v-row dense>
+      <v-col cols="12" sm="4"><KpiCard label="Vencido" :value="brl(summary.overdue)" :value-color="summary.overdue ? 'error' : undefined" icon="mdi-alert-circle-outline" /></v-col>
+      <v-col cols="12" sm="4"><KpiCard label="Próximos 7 dias" :value="brl(summary.next7)" icon="mdi-calendar-week" /></v-col>
+      <v-col cols="12" sm="4"><KpiCard label="Total em aberto" :value="brl(summary.total)" icon="mdi-cash-clock" /></v-col>
+    </v-row>
+  </div>
 
   <v-card>
     <div class="d-flex align-center flex-wrap ga-3 pa-4">

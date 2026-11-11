@@ -72,35 +72,44 @@ onMounted(load)
 
 <template>
   <template v-if="data">
-    <div class="owner-head mb-5" :style="data.project.imageUrl ? { backgroundImage: `linear-gradient(90deg, rgba(10,40,32,.88), rgba(10,40,32,.35)), url(${data.project.imageUrl})` } : {}">
-      <div class="text-caption head-muted">{{ data.project.code }} · {{ contractLabel(data.contract) }}</div>
-      <div class="text-h5 font-weight-bold">{{ data.project.name }}</div>
-      <div v-if="data.project.address" class="text-body-2 head-muted">{{ data.project.address }}</div>
+    <div class="owner-head mb-5" :style="data.project.imageUrl ? { backgroundImage: `linear-gradient(135deg, rgba(10,40,32,.92) 30%, rgba(10,40,32,.45)), url(${data.project.imageUrl})` } : {}">
+      <div class="d-flex align-center ga-2 mb-1">
+        <span class="tag" style="background: rgba(255,255,255,.18); color: rgba(255,255,255,.9)">{{ data.project.code }}</span>
+        <span class="text-caption head-muted">{{ contractLabel(data.contract) }}</span>
+      </div>
+      <div class="text-h5 font-weight-bold" style="letter-spacing: -0.02em">{{ data.project.name }}</div>
+      <div v-if="data.project.address" class="text-body-2 head-muted mt-1">
+        <v-icon size="14" class="mr-1" style="opacity: .7">mdi-map-marker-outline</v-icon>{{ data.project.address }}
+      </div>
     </div>
 
     <v-alert v-if="data.news.documents" type="info" variant="tonal" density="compact" class="mb-4" icon="mdi-bell-ring-outline">
       {{ data.news.documents }} nota(s) nova(s) desde a sua última visita. Elas aparecem marcadas na aba Notas.
     </v-alert>
 
-    <v-row dense class="mb-3">
-      <v-col cols="12" sm="4">
-        <KpiCard
-          :label="`Medição de ${monthName(data.measurement.period.month).split(' ')[0].toLowerCase()}`"
-          :value="brl(data.measurement.totals.expected)"
-          value-color="primary"
-          :hint="`${brl(data.measurement.totals.realizedWithFee)} já lançado`"
-        />
-      </v-col>
-      <v-col cols="6" sm="4"><KpiCard label="Custo da obra até hoje" :value="brl(data.costToDate)" hint="notas aprovadas" /></v-col>
-      <v-col cols="6" sm="4">
-        <KpiCard
-          label="Andamento físico"
-          :value="data.physicalPct === null ? '—' : `${Math.round(data.physicalPct)}%`"
-          :progress="data.physicalPct ?? undefined"
-          :hint="data.physicalPct === null ? 'etapas ainda não cadastradas' : undefined"
-        />
-      </v-col>
-    </v-row>
+    <div class="panel mb-4">
+      <v-row dense>
+        <v-col cols="12" sm="4">
+          <KpiCard
+            :label="`Medição de ${monthName(data.measurement.period.month).split(' ')[0].toLowerCase()}`"
+            :value="brl(data.measurement.totals.expected)"
+            value-color="primary"
+            :hint="`${brl(data.measurement.totals.realizedWithFee)} já lançado`"
+            icon="mdi-tape-measure"
+          />
+        </v-col>
+        <v-col cols="6" sm="4"><KpiCard label="Custo da obra até hoje" :value="brl(data.costToDate)" hint="notas aprovadas" icon="mdi-currency-brl" /></v-col>
+        <v-col cols="6" sm="4">
+          <KpiCard
+            label="Andamento físico"
+            :value="data.physicalPct === null ? '—' : `${Math.round(data.physicalPct)}%`"
+            :progress="data.physicalPct ?? undefined"
+            :hint="data.physicalPct === null ? 'etapas ainda não cadastradas' : undefined"
+            icon="mdi-progress-wrench"
+          />
+        </v-col>
+      </v-row>
+    </div>
 
     <v-card>
       <v-tabs v-model="tab" color="primary" class="px-4">
@@ -182,12 +191,13 @@ onMounted(load)
 
 <style scoped>
 .owner-head {
-  border-radius: 14px;
-  padding: 26px 24px;
+  border-radius: var(--oo-r-card);
+  padding: 28px 26px;
   color: #fff;
-  background: linear-gradient(90deg, #0e3b30, #155f4b);
+  background: linear-gradient(135deg, #0a3028, #0d5c47);
   background-size: cover;
   background-position: center;
+  box-shadow: 0 12px 32px -16px rgba(10, 48, 40, 0.5);
 }
 .head-muted {
   opacity: 0.8;

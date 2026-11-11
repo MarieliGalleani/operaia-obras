@@ -101,24 +101,31 @@ async function save() {
   <v-row v-if="loading"><v-col v-for="i in 3" :key="i" cols="12" md="6" lg="4"><v-skeleton-loader type="card" /></v-col></v-row>
   <v-row v-else dense>
     <v-col v-for="p in visible" :key="p.id" cols="12" md="6" lg="4">
-      <v-card class="pa-4 h-100 project-card" @click="router.push({ name: 'project', params: { id: p.id } })">
-        <div class="d-flex ga-3 mb-4">
-          <ProjectThumb :name="p.name" :image-url="p.imageUrl" :size="76" />
-          <div style="min-width: 0">
-            <div class="text-caption muted">{{ p.code }}</div>
-            <div class="font-weight-bold">{{ p.name }}</div>
-            <div class="text-caption muted text-truncate">{{ p.address }}</div>
+      <v-card class="pa-5 h-100 project-card" @click="router.push({ name: 'project', params: { id: p.id } })">
+        <div class="d-flex ga-3 align-center mb-2">
+          <ProjectThumb :name="p.name" :image-url="p.imageUrl" :size="52" />
+          <div style="min-width: 0; flex: 1">
+            <div class="d-flex align-center ga-2">
+              <span class="tag">{{ p.code }}</span>
+              <span
+                class="state"
+                :class="p.financials.committedPct >= 90 ? 'state-late' : p.financials.committedPct >= 70 ? 'state-attention' : 'state-ok'"
+              >
+                <v-icon size="14">{{ p.financials.committedPct >= 90 ? 'mdi-alert-circle-outline' : p.financials.committedPct >= 70 ? 'mdi-alert-outline' : 'mdi-check-circle-outline' }}</v-icon>
+                {{ pct(p.financials.committedPct) }} comprometido
+              </span>
+            </div>
+            <div class="card-title mt-1" style="line-height: 1.2">{{ p.name }}</div>
+            <div v-if="p.address" class="text-caption muted text-truncate mt-1">{{ p.address }}</div>
           </div>
         </div>
-        <div class="d-flex justify-space-between text-body-2 mb-1">
-          <span :class="p.financials.committedPct >= 90 ? 'text-error font-weight-bold' : 'font-weight-medium'">{{ pct(p.financials.committedPct) }} comprometido</span>
-          <span class="money muted">{{ brl(p.budgetTotal, { compact: true }) }}</span>
-        </div>
-        <StackBar :paid="p.financials.paid" :open="p.financials.open" :budget="p.budgetTotal" />
-        <div class="d-flex justify-space-between text-caption mt-3">
-          <div><div class="muted">Pago</div><div class="money font-weight-medium">{{ brl(p.financials.paid, { compact: true }) }}</div></div>
-          <div><div class="muted">A pagar</div><div class="money font-weight-medium">{{ brl(p.financials.open, { compact: true }) }}</div></div>
-          <div class="text-right"><div class="muted">Saldo</div><div class="money font-weight-medium">{{ brl(p.budgetTotal - p.financials.paid - p.financials.open, { compact: true }) }}</div></div>
+
+        <div class="panel-sunken mt-3 pa-3">
+          <div class="d-flex align-center justify-space-between mb-2">
+            <span class="sec-label">Orçamento</span>
+            <span class="money font-weight-medium" style="font-size: var(--oo-fs-body)">{{ brl(p.budgetTotal) }}</span>
+          </div>
+          <StackBar :paid="p.financials.paid" :open="p.financials.open" :budget="p.budgetTotal" legend columns />
         </div>
       </v-card>
     </v-col>
