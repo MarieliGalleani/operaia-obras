@@ -265,6 +265,7 @@ function logout() {
 .page-wrap {
   padding: 24px 28px 40px;
   max-width: 1480px;
+  margin: 0 auto;
 }
 @media (max-width: 600px) {
   .page-wrap {
